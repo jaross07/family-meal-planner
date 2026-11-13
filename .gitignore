@@ -1,0 +1,8 @@
+.env
+*.log
+__pycache__/
+*.pyc
+.pytest_cache/
+planner/dist/
+planner/node_modules/
+backups/
