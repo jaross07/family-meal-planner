@@ -7,6 +7,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    JSON,
     UniqueConstraint,
     func,
 )
@@ -22,7 +23,7 @@ class RecipeCache(Base):
     mealie_recipe_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     slug: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    tags: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    tags: Mapped[list] = mapped_column(JSON().with_variant(JSONB(), "postgresql"), default=list, nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -75,7 +76,7 @@ class UserProfile(Base):
     color_code: Mapped[str] = mapped_column(String(7), nullable=False)
 
     __table_args__ = (
-        CheckConstraint("color_code ~ '^#[0-9A-Fa-f]{6}$'", name="ck_user_profile_color_hex"),
+        CheckConstraint("LENGTH(color_code) = 7 AND color_code LIKE '#%'", name="ck_user_profile_color_hex"),
     )
 
 
