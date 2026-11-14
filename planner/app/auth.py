@@ -12,7 +12,7 @@ SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14  # 14 days
 _serializer = URLSafeTimedSerializer(settings.session_secret, salt="planner-session-v1")
 
 DEFAULT_PROFILES = {
-    "justin": {"display_name": "Dad", "initials": "D", "color_code": "#3B82F6"},
+    "justin": {"display_name": "Justin", "initials": "J", "color_code": "#3B82F6"},
     "dad": {"display_name": "Dad", "initials": "D", "color_code": "#3B82F6"},
     "jenesa": {"display_name": "Jenesa", "initials": "J", "color_code": "#EC4899"},
     "henley": {"display_name": "Henley", "initials": "H", "color_code": "#10B981"},
