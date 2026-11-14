@@ -219,3 +219,28 @@ class MealieClient:
 
 
 mealie_client = MealieClient()
+
+
+async def fetch_household_users() -> list[dict]:
+    """Fetch household members using the planner-bot service token."""
+    async with httpx.AsyncClient(base_url=mealie_client.base_url, timeout=mealie_client.timeout) as client:
+        try:
+            resp = await client.get("/api/households/self", headers=mealie_client._headers())
+        except httpx.RequestError as exc:
+            raise MealieUnavailableError("Unable to fetch household users from Mealie") from exc
+
+        if resp.status_code >= 500:
+            raise MealieUnavailableError(f"Mealie household error: {resp.status_code}")
+        resp.raise_for_status()
+
+        data = resp.json()
+        users = data.get("users", [])
+        return [
+            {
+                "user_id": str(u["id"]),
+                "username": u.get("username", ""),
+                "full_name": u.get("fullName") or u.get("username", ""),
+            }
+            for u in users
+            if u.get("id")
+        ]

@@ -134,7 +134,7 @@ async function handleToggleBadge(entry) {
   })
   await loadMonthAttendance()
   if (entry.date === selectedDate.value) {
-    await loadDayDetails()
+    await loadInitialData()
   }
 }
 
@@ -145,7 +145,7 @@ async function handleRangeSet(payload) {
   })
   notify(`Updated ${payload.start_date} to ${payload.end_date}`)
   await loadMonthAttendance()
-  await loadDayDetails()
+  await loadInitialData()
 }
 
 async function handleUndo() {
@@ -153,7 +153,7 @@ async function handleUndo() {
   if (res.reverted > 0) {
     notify(`Reverted ${res.reverted} attendance entry(s)`)
     await loadMonthAttendance()
-    await loadDayDetails()
+    await loadInitialData()
   }
 }
 
@@ -163,7 +163,7 @@ async function handleUpdateContext(payload) {
     body: JSON.stringify(payload),
   })
   contexts[payload.date] = updated
-  await loadDayDetails()
+  await loadInitialData()
 }
 
 async function handleRateRecipe(recipeId, score) {
@@ -172,7 +172,7 @@ async function handleRateRecipe(recipeId, score) {
     body: JSON.stringify({ score }),
   })
   myRatings[recipeId] = score
-  await loadDayDetails()
+  await loadInitialData()
 }
 
 async function handlePlanRecipe(item) {
@@ -202,7 +202,7 @@ async function handleSyncNow() {
     const res = await apiFetch('/api/sync', { method: 'POST' })
     mealieUnavailable.value = false
     notify(`Synced ${res.synced_total} recipes from Mealie`)
-    await loadDayDetails()
+    await loadInitialData()
   } catch (err) {
     if (err.status === 503) mealieUnavailable.value = true
     notify(err.message)
