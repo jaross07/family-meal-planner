@@ -35,6 +35,40 @@ services:
       timeout: 5s
       retries: 5
 
+  planner:
+    build: ./planner
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9930:8000"
+    environment:
+      TZ: America/Los_Angeles
+      MEALIE_INTERNAL_URL: http://mealie:9000
+      MEALIE_PUBLIC_URL: ${MEALIE_BASE_URL}
+      MEALIE_SERVICE_TOKEN: ${MEALIE_SERVICE_TOKEN}
+      SESSION_SECRET: ${SESSION_SECRET}
+      DATABASE_URL: postgresql+psycopg://planner:${PLANNER_DB_PASSWORD}@planner-db:5432/planner
+    depends_on:
+      planner-db:
+        condition: service_healthy
+      mealie:
+        condition: service_started
+
+  planner-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: planner
+      POSTGRES_PASSWORD: ${PLANNER_DB_PASSWORD}
+      POSTGRES_DB: planner
+    volumes:
+      - planner-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U planner -d planner"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   mealie-data:
   mealie-pgdata:
+  planner-pgdata:
