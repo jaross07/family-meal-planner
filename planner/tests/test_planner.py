@@ -8,7 +8,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-# Provide test environment variables before importing app modules
 os.environ.setdefault("MEALIE_PUBLIC_URL", "https://family-planner-vnic.tailfb3faa.ts.net")
 os.environ.setdefault("MEALIE_SERVICE_TOKEN", "test-service-token")
 os.environ.setdefault("SESSION_SECRET", "test-session-secret-key-for-unit-tests-12345")
@@ -72,23 +71,21 @@ def client(db_session):
     app.dependency_overrides.clear()
 
 
-def _auth_cookies(user_id: str, username: str = "justin") -> dict[str, str]:
+def _set_auth_cookie(client: TestClient, user_id: str, username: str = "justin") -> None:
     token = _serializer.dumps(
         {"user_id": user_id, "username": username, "mealie_token": f"mealie-tok-{user_id}"}
     )
-    return {SESSION_COOKIE_NAME: token}
+    client.cookies.set(SESSION_COOKIE_NAME, token)
 
 
 def test_attendance_four_tier_precedence(db_session):
     target = date(2026, 11, 18)  # Wednesday (weekday=2)
 
-    # Tier 4: Default status is 'home'
     res = resolve_attendance_range(db_session, target, target, meal_types=("dinner",))
     henley = next(r for r in res if r["mealie_user_id"] == "u-henley")
     assert henley["status"] == "home"
     assert henley["source"] == "default"
 
-    # Tier 3: Recurring rule sets Henley to 'out' on Wednesdays for Dance class
     rule = RecurringRule(
         mealie_user_id="u-henley",
         weekday=2,
@@ -107,7 +104,6 @@ def test_attendance_four_tier_precedence(db_session):
     assert henley["source"] == "rule"
     assert henley["label"] == "Dance class"
 
-    # Tier 2: Rule exception cancels recurring rule -> falls back to 'home'
     db_session.add(RuleException(rule_id=rule.id, date=target))
     db_session.commit()
 
@@ -116,7 +112,6 @@ def test_attendance_four_tier_precedence(db_session):
     assert henley["status"] == "home"
     assert henley["source"] == "exception"
 
-    # Tier 1: Manual entry overrides everything
     db_session.add(
         MealAttendance(
             date=target,
@@ -159,7 +154,6 @@ async def test_recommendations_veto_and_edge_cases(db_session):
     assert [item["mealie_recipe_id"] for item in result["items"]] == ["r-tacos"]
     assert result["items"][0]["score"] == 0.333
 
-    # Veto Tacos for Jenesa -> all_vetoed
     db_session.add(RecipeRating(mealie_recipe_id="r-tacos", mealie_user_id="u-jenesa", score=-1))
     db_session.commit()
 
@@ -168,7 +162,6 @@ async def test_recommendations_veto_and_edge_cases(db_session):
     assert vetoed_res["reason"] == "all_vetoed"
     assert vetoed_res["items"] == []
 
-    # Everyone away -> no_diners
     for uid in ("u-justin", "u-jenesa", "u-henley"):
         db_session.add(
             MealAttendance(date=target, meal_type="dinner", mealie_user_id=uid, status="away", source="manual")
@@ -208,7 +201,6 @@ async def test_recommendations_fast_cook_lunch_leftovers_and_chains(db_session):
     )
     db_session.commit()
 
-    # 1. Leftover Chain boost on Thursday after Mashed Potatoes planned on Tuesday
     mock_plans = [{"date": tuesday, "entry_type": "dinner", "recipe_id": "r-mash", "recipe_name": "Mashed Potatoes"}]
     with patch("app.recommend.mealie_client.get_planned_meals", new=AsyncMock(return_value=mock_plans)):
         chain_res = await generate_recommendations(db_session, thursday, "dinner")
@@ -218,7 +210,6 @@ async def test_recommendations_fast_cook_lunch_leftovers_and_chains(db_session):
     assert top["score"] == 1.5
     assert top["leftover_badge"] == "Uses leftover Mashed Potatoes from Tuesday"
 
-    # 2. Fast & Easy day (max_prep_time = 20) filters out 25m and 50m recipes
     db_session.add(MealContext(date=thursday, meal_type="dinner", require_leftovers=False, max_prep_time=20))
     db_session.commit()
 
@@ -226,7 +217,6 @@ async def test_recommendations_fast_cook_lunch_leftovers_and_chains(db_session):
         fast_res = await generate_recommendations(db_session, thursday, "dinner")
     assert [i["mealie_recipe_id"] for i in fast_res["items"]] == ["r-ques"]
 
-    # 3. Make Extra day (require_leftovers = True, no time cap) excludes non-leftover recipes
     ctx = db_session.query(MealContext).filter_by(date=thursday, meal_type="dinner").first()
     ctx.max_prep_time = None
     ctx.require_leftovers = True
@@ -241,19 +231,18 @@ async def test_recommendations_fast_cook_lunch_leftovers_and_chains(db_session):
 def test_authorization_isolates_user_ratings_and_profile(client, db_session):
     assert client.get("/api/profile").status_code == 401
 
-    resp = client.put("/api/ratings/r-tacos", json={"score": 1}, cookies=_auth_cookies("u-justin", "justin"))
+    _set_auth_cookie(client, "u-justin", "justin")
+    resp = client.put("/api/ratings/r-tacos", json={"score": 1})
     assert resp.status_code == 200
     assert resp.json()["mealie_user_id"] == "u-justin"
 
-    jenesa_resp = client.get("/api/ratings/r-tacos", cookies=_auth_cookies("u-jenesa", "jenesa"))
+    _set_auth_cookie(client, "u-jenesa", "jenesa")
+    jenesa_resp = client.get("/api/ratings/r-tacos")
     assert jenesa_resp.status_code == 200
     assert jenesa_resp.json()["score"] == 0
 
-    prof_resp = client.put(
-        "/api/profile",
-        json={"color_code": "#1D4ED8"},
-        cookies=_auth_cookies("u-justin", "justin"),
-    )
+    _set_auth_cookie(client, "u-justin", "justin")
+    prof_resp = client.put("/api/profile", json={"color_code": "#1D4ED8"})
     assert prof_resp.status_code == 200
     assert db_session.get(UserProfile, "u-justin").color_code == "#1D4ED8"
     assert db_session.get(UserProfile, "u-jenesa").color_code == "#EC4899"
