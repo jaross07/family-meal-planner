@@ -229,6 +229,13 @@ function chooseRecipe(item) {
       <strong>♻ Eating Leftovers</strong> — No new recipe required for this meal. Toggle off <em>Eating Leftovers</em> above if you want fresh recipe suggestions.
     </div>
 
+    <div
+      v-else-if="context?.henleys_choice"
+      style="background: #fefce8; border: 1px solid #fde047; color: #854d0e; border-radius: 8px; padding: 12px; margin-bottom: 10px"
+    >
+      <strong>👑 Henley's Choice</strong> — Henley picks this meal; no recipe planning required. Toggle off <em>Henley's Choice</em> above if you want recipe suggestions.
+    </div>
+
     <div v-else-if="context && context.is_planned === false" style="color: var(--muted); padding: 12px 0">
       This meal is marked as not planned. Double-click the day or click <strong>Edit Day Meals</strong> to enable it.
     </div>

@@ -886,11 +886,19 @@ async def preview_week_plan(
         is_planned = ctx.is_planned if ctx else default_planned
 
         eating_leftovers = ctx.eating_leftovers if ctx else False
-        if not is_planned or eating_leftovers:
+        henleys_choice = ctx.henleys_choice if ctx else False
+        if not is_planned or eating_leftovers or henleys_choice:
+            reason = (
+                "eating_leftovers"
+                if eating_leftovers
+                else "henleys_choice"
+                if henleys_choice
+                else "not_planned"
+            )
             days_out.append({
                 "date": day.isoformat(),
                 "is_planned": False,
-                "reason": "eating_leftovers" if eating_leftovers else "not_planned",
+                "reason": reason,
                 "diners": [],
                 "selected_recipe_id": None,
                 "candidates": [],
