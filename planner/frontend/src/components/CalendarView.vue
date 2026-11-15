@@ -2,8 +2,9 @@
 import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
-  year: Number,
-  month: Number, // 0-indexed (0=Jan)
+  anchorDate: String, // YYYY-MM-DD
+  viewMode: String, // 'month' | '2week' | '1week'
+  weekStartDay: Number, // 0 = Sun, 1 = Mon
   mealType: String,
   selectedDate: String,
   attendance: Array,
@@ -14,38 +15,100 @@ const props = defineProps({
 
 const emit = defineEmits([
   'update:mealType',
-  'change-month',
+  'update:viewMode',
+  'navigate',
   'select-date',
+  'open-day-modal',
   'toggle-badge',
   'range-set',
   'undo',
 ])
 
-const dragUserId = ref(props.household[0]?.mealie_user_id || '')
+const dragTargetUser = ref('ALL')
 const dragStatus = ref('away')
 const dragStart = ref(null)
 const dragEnd = ref(null)
 
-const monthLabel = computed(() => {
-  const d = new Date(props.year, props.month, 1)
-  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-})
+const activeHousehold = computed(() =>
+  (props.household || []).filter((m) => m.active !== false)
+)
+
+watch(
+  activeHousehold,
+  (list) => {
+    if (dragTargetUser.value !== 'ALL' && !list.some((m) => m.mealie_user_id === dragTargetUser.value)) {
+      dragTargetUser.value = 'ALL'
+    }
+  },
+  { immediate: true }
+)
+
+const dowHeaders = computed(() =>
+  props.weekStartDay === 1
+    ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+)
+
+function parseIso(iso) {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+function toIso(d) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function startOfWeek(d, startDay) {
+  const dow = d.getDay()
+  const diff = (dow - startDay + 7) % 7
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - diff)
+}
 
 const calendarDays = computed(() => {
-  const firstDay = new Date(props.year, props.month, 1)
-  const startOffset = firstDay.getDay() // 0=Sun
-  const gridStart = new Date(props.year, props.month, 1 - startOffset)
+  const anchor = parseIso(props.anchorDate)
+  let gridStart
+  let totalCells
+
+  if (props.viewMode === '1week') {
+    gridStart = startOfWeek(anchor, props.weekStartDay)
+    totalCells = 7
+  } else if (props.viewMode === '2week') {
+    gridStart = startOfWeek(anchor, props.weekStartDay)
+    totalCells = 14
+  } else {
+    const firstOfMonth = new Date(anchor.getFullYear(), anchor.getMonth(), 1)
+    gridStart = startOfWeek(firstOfMonth, props.weekStartDay)
+    totalCells = 42
+  }
+
   const cells = []
-  for (let i = 0; i < 42; i++) {
+  for (let i = 0; i < totalCells; i++) {
     const d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i)
-    const iso = d.toISOString().slice(0, 10)
+    const iso = toIso(d)
     cells.push({
       iso,
       dayNum: d.getDate(),
-      inMonth: d.getMonth() === props.month,
+      monthShort: d.toLocaleDateString('en-US', { month: 'short' }),
+      inMonth: props.viewMode !== 'month' || d.getMonth() === anchor.getMonth(),
     })
   }
   return cells
+})
+
+const headerLabel = computed(() => {
+  const anchor = parseIso(props.anchorDate)
+  if (props.viewMode === 'month') {
+    return anchor.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  }
+  const days = calendarDays.value
+  const first = parseIso(days[0].iso)
+  const last = parseIso(days[days.length - 1].iso)
+  const fStr = first.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const lStr = last.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return `${fStr} – ${lStr}`
 })
 
 const attendanceByDate = computed(() => {
@@ -57,6 +120,12 @@ const attendanceByDate = computed(() => {
   }
   return map
 })
+
+function isDayMealPlanned(iso) {
+  const ctx = props.contexts?.[`${iso}:${props.mealType}`]
+  if (ctx && typeof ctx.is_planned === 'boolean') return ctx.is_planned
+  return props.mealType !== 'breakfast'
+}
 
 function isInDragRange(iso) {
   if (!dragStart.value || !dragEnd.value) return false
@@ -84,13 +153,16 @@ function onMouseUp() {
     const [start, end] = dragStart.value <= dragEnd.value
       ? [dragStart.value, dragEnd.value]
       : [dragEnd.value, dragStart.value]
-    const targetUser = dragUserId.value || props.household[0]?.mealie_user_id
-    if (targetUser) {
+    const userIds =
+      dragTargetUser.value === 'ALL'
+        ? activeHousehold.value.map((m) => m.mealie_user_id)
+        : [dragTargetUser.value]
+    if (userIds.length) {
       emit('range-set', {
         start_date: start,
         end_date: end,
         meal_types: [props.mealType],
-        mealie_user_id: targetUser,
+        user_ids: userIds,
         status: dragStatus.value,
       })
     }
@@ -116,20 +188,28 @@ function ruleLabelsForDate(iso) {
   <div class="card" @mouseup="onMouseUp" @mouseleave="onMouseUp">
     <div class="cal-header">
       <div class="cal-controls">
-        <button @click="emit('change-month', -1)">&larr;</button>
-        <strong style="min-width: 140px; text-align: center">{{ monthLabel }}</strong>
-        <button @click="emit('change-month', 1)">&rarr;</button>
-        <select :value="mealType" @change="emit('update:mealType', $event.target.value)">
+        <button @click="emit('navigate', -1)">&larr;</button>
+        <strong style="min-width: 155px; text-align: center">{{ headerLabel }}</strong>
+        <button @click="emit('navigate', 1)">&rarr;</button>
+
+        <select :value="viewMode" @change="emit('update:viewMode', $event.target.value)" aria-label="Calendar span">
+          <option value="month">Month</option>
+          <option value="2week">2 Weeks</option>
+          <option value="1week">1 Week</option>
+        </select>
+
+        <select :value="mealType" @change="emit('update:mealType', $event.target.value)" aria-label="Meal type">
           <option value="dinner">Dinner</option>
           <option value="lunch">Lunch</option>
           <option value="breakfast">Breakfast</option>
         </select>
       </div>
 
-      <div class="cal-controls">
-        <span style="font-size: 0.78rem; color: var(--muted)">Drag range:</span>
-        <select v-model="dragUserId" aria-label="Drag user">
-          <option v-for="u in household.filter(m => m.active !== false)" :key="u.mealie_user_id" :value="u.mealie_user_id">
+      <div class="cal-controls" title="Click and drag across multiple days on the calendar to bulk-set attendance">
+        <span style="font-size: 0.78rem; color: var(--muted)">Click &amp; drag days:</span>
+        <select v-model="dragTargetUser" aria-label="Drag target user">
+          <option value="ALL">All Family</option>
+          <option v-for="u in activeHousehold" :key="u.mealie_user_id" :value="u.mealie_user_id">
             {{ u.display_name }}
           </option>
         </select>
@@ -138,12 +218,16 @@ function ruleLabelsForDate(iso) {
           <option value="out">Out</option>
           <option value="home">Home</option>
         </select>
-        <button :disabled="!undoAvailable" @click="emit('undo')">Undo last change</button>
+        <button :disabled="!undoAvailable" @click="emit('undo')">Undo</button>
       </div>
     </div>
 
+    <div style="font-size: 0.75rem; color: var(--muted); margin-bottom: 8px">
+      Tip: Double-click any day to check/uncheck Breakfast, Lunch &amp; Dinner attendance.
+    </div>
+
     <div class="cal-grid">
-      <div v-for="dow in ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']" :key="dow" class="cal-dow">
+      <div v-for="dow in dowHeaders" :key="dow" class="cal-dow">
         {{ dow }}
       </div>
 
@@ -156,14 +240,22 @@ function ruleLabelsForDate(iso) {
           selected: cell.iso === selectedDate,
           'drag-highlight': isInDragRange(cell.iso),
         }"
+        :style="{ minHeight: viewMode === 'month' ? '102px' : '150px' }"
         @mousedown="onCellMouseDown(cell.iso, $event)"
         @mouseenter="onCellMouseEnter(cell.iso)"
+        @dblclick.stop="emit('open-day-modal', cell.iso)"
       >
         <div class="cell-top">
-          <span>{{ cell.dayNum }}</span>
+          <span>
+            <span v-if="viewMode !== 'month' || cell.dayNum === 1" style="color: var(--muted); margin-right: 3px">
+              {{ cell.monthShort }}
+            </span>
+            {{ cell.dayNum }}
+          </span>
           <span class="ctx-icons">
-            <span v-if="contexts[cell.iso]?.max_prep_time" title="Fast & Easy">⚡</span>
-            <span v-if="contexts[cell.iso]?.require_leftovers" title="Make Extra">🍱</span>
+            <span v-if="!isDayMealPlanned(cell.iso)" title="Meal not planned">🚫</span>
+            <span v-if="contexts[`${cell.iso}:${mealType}`]?.max_prep_time" title="Fast & Easy">⚡</span>
+            <span v-if="contexts[`${cell.iso}:${mealType}`]?.require_leftovers" title="Make Extra">🍱</span>
           </span>
         </div>
 

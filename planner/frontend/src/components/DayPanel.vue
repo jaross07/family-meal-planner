@@ -17,6 +17,7 @@ const emit = defineEmits([
   'rate-recipe',
   'plan-recipe',
   'show-vetoed',
+  'open-day-modal',
 ])
 
 const formattedDate = computed(() => {
@@ -57,7 +58,10 @@ function mealieRecipeUrl(slug) {
 <template>
   <div class="card">
     <div class="panel-section">
-      <h2 style="margin: 0 0 4px; font-size: 1.1rem">{{ formattedDate }}</h2>
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+        <h2 style="margin: 0 0 4px; font-size: 1.1rem">{{ formattedDate }}</h2>
+        <button @click="emit('open-day-modal', selectedDate)">Edit Day Meals</button>
+      </div>
       <div style="font-size: 0.85rem; color: var(--muted); text-transform: capitalize">
         {{ mealType }} &bull;
         <span v-if="recommendations?.diners?.length">

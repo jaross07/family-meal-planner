@@ -1,7 +1,8 @@
 <script setup>
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { apiFetch } from './api'
 import CalendarView from './components/CalendarView.vue'
+import DayMealsModal from './components/DayMealsModal.vue'
 import DayPanel from './components/DayPanel.vue'
 import RulesModal from './components/RulesModal.vue'
 
@@ -16,11 +17,24 @@ const household = ref([])
 const mealieUnavailable = ref(false)
 const toastMessage = ref('')
 
-const today = new Date()
-const year = ref(today.getFullYear())
-const month = ref(today.getMonth())
+function toIso(d) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function parseIso(iso) {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+const todayIso = toIso(new Date())
+const anchorDate = ref(todayIso)
+const viewMode = ref('month')
+const weekStartDay = ref(0)
 const mealType = ref('dinner')
-const selectedDate = ref(today.toISOString().slice(0, 10))
+const selectedDate = ref(todayIso)
 
 const attendance = ref([])
 const contexts = reactive({})
@@ -31,6 +45,7 @@ const loadingRecs = ref(false)
 const planningRecipeId = ref(null)
 const syncing = ref(false)
 const showRulesModal = ref(false)
+const dayModalDate = ref(null)
 
 const mealiePublicUrl = `${window.location.protocol}//${window.location.hostname}`
 
@@ -45,8 +60,10 @@ async function loadInitialData() {
   const prof = await apiFetch('/api/profile')
   currentUser.value = prof.current_user
   household.value = prof.household
+  weekStartDay.value = prof.current_user.week_start_day ?? 0
+  viewMode.value = prof.current_user.calendar_view || 'month'
   authenticated.value = true
-  await Promise.all([loadMonthAttendance(), loadRules(), loadDayDetails()])
+  await Promise.all([loadVisibleRangeData(), loadRules(), loadDayDetails()])
 }
 
 async function handleLogin() {
@@ -72,16 +89,21 @@ async function handleLogout() {
   currentUser.value = null
 }
 
-async function loadMonthAttendance() {
-  const firstDay = new Date(year.value, month.value, 1)
-  const startOffset = firstDay.getDay()
-  const gridStart = new Date(year.value, month.value, 1 - startOffset)
-  const gridEnd = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + 41)
+async function loadVisibleRangeData() {
+  const anchor = parseIso(anchorDate.value)
+  const start = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() - 14)
+  const end = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + 45)
+  const fromStr = toIso(start)
+  const toStr = toIso(end)
 
-  const data = await apiFetch(
-    `/api/attendance?from=${gridStart.toISOString().slice(0, 10)}&to=${gridEnd.toISOString().slice(0, 10)}`
-  )
-  attendance.value = data.items
+  const [attData, ctxList] = await Promise.all([
+    apiFetch(`/api/attendance?from=${fromStr}&to=${toStr}`),
+    apiFetch(`/api/contexts?from=${fromStr}&to=${toStr}`),
+  ])
+  attendance.value = attData.items
+  for (const c of ctxList) {
+    contexts[`${c.date}:${c.meal_type}`] = c
+  }
 }
 
 async function loadRules() {
@@ -97,11 +119,10 @@ async function loadDayDetails(includeVetoed = false) {
         `/api/recommendations?date=${selectedDate.value}&meal_type=${mealType.value}&include_vetoed=${includeVetoed}`
       ),
     ])
-    contexts[selectedDate.value] = ctx
+    contexts[`${selectedDate.value}:${mealType.value}`] = ctx
     recommendations.value = recs
     mealieUnavailable.value = recs.mealie_available === false
 
-    // Fetch current user's rating for each visible recommended recipe
     await Promise.all(
       (recs.items || []).map(async (item) => {
         const r = await apiFetch(`/api/ratings/${item.mealie_recipe_id}`)
@@ -113,11 +134,17 @@ async function loadDayDetails(includeVetoed = false) {
   }
 }
 
-function changeMonth(delta) {
-  const d = new Date(year.value, month.value + delta, 1)
-  year.value = d.getFullYear()
-  month.value = d.getMonth()
-  loadMonthAttendance()
+function navigateCalendar(delta) {
+  const d = parseIso(anchorDate.value)
+  if (viewMode.value === '1week') {
+    d.setDate(d.getDate() + delta * 7)
+  } else if (viewMode.value === '2week') {
+    d.setDate(d.getDate() + delta * 14)
+  } else {
+    d.setMonth(d.getMonth() + delta)
+  }
+  anchorDate.value = toIso(d)
+  loadVisibleRangeData()
 }
 
 async function handleToggleBadge(entry) {
@@ -132,28 +159,36 @@ async function handleToggleBadge(entry) {
       status: nextStatus,
     }),
   })
-  await loadMonthAttendance()
+  await loadVisibleRangeData()
   if (entry.date === selectedDate.value) {
-    await loadInitialData()
+    await loadDayDetails()
   }
 }
 
 async function handleRangeSet(payload) {
-  await apiFetch('/api/attendance', {
-    method: 'PUT',
-    body: JSON.stringify(payload),
-  })
+  for (const uid of payload.user_ids) {
+    await apiFetch('/api/attendance', {
+      method: 'PUT',
+      body: JSON.stringify({
+        start_date: payload.start_date,
+        end_date: payload.end_date,
+        meal_types: payload.meal_types,
+        mealie_user_id: uid,
+        status: payload.status,
+      }),
+    })
+  }
   notify(`Updated ${payload.start_date} to ${payload.end_date}`)
-  await loadMonthAttendance()
-  await loadInitialData()
+  await loadVisibleRangeData()
+  await loadDayDetails()
 }
 
 async function handleUndo() {
   const res = await apiFetch('/api/attendance/undo', { method: 'POST' })
   if (res.reverted > 0) {
     notify(`Reverted ${res.reverted} attendance entry(s)`)
-    await loadMonthAttendance()
-    await loadInitialData()
+    await loadVisibleRangeData()
+    await loadDayDetails()
   }
 }
 
@@ -162,8 +197,64 @@ async function handleUpdateContext(payload) {
     method: 'PUT',
     body: JSON.stringify(payload),
   })
-  contexts[payload.date] = updated
-  await loadInitialData()
+  contexts[`${payload.date}:${payload.meal_type}`] = updated
+  await loadDayDetails()
+}
+
+async function openDayModal(dateIso) {
+  selectedDate.value = dateIso
+  await Promise.all(
+    ['breakfast', 'lunch', 'dinner'].map(async (mtype) => {
+      const c = await apiFetch(`/api/context?date=${dateIso}&meal_type=${mtype}`)
+      contexts[`${dateIso}:${mtype}`] = c
+    })
+  )
+  dayModalDate.value = dateIso
+}
+
+const modalDayContexts = computed(() => {
+  if (!dayModalDate.value) return {}
+  return {
+    breakfast: contexts[`${dayModalDate.value}:breakfast`],
+    lunch: contexts[`${dayModalDate.value}:lunch`],
+    dinner: contexts[`${dayModalDate.value}:dinner`],
+  }
+})
+
+async function handleModalToggleMealPlanned(mtype, isPlanned) {
+  const d = dayModalDate.value
+  const existing = contexts[`${d}:${mtype}`] || {}
+  const updated = await apiFetch('/api/context', {
+    method: 'PUT',
+    body: JSON.stringify({
+      date: d,
+      meal_type: mtype,
+      require_leftovers: Boolean(existing.require_leftovers),
+      max_prep_time: existing.max_prep_time ?? null,
+      is_planned: isPlanned,
+    }),
+  })
+  contexts[`${d}:${mtype}`] = updated
+  if (d === selectedDate.value && mtype === mealType.value) {
+    await loadDayDetails()
+  }
+}
+
+async function handleModalToggleUserAttending(mtype, userId, attending) {
+  const d = dayModalDate.value
+  await apiFetch('/api/attendance', {
+    method: 'PUT',
+    body: JSON.stringify({
+      start_date: d,
+      meal_types: [mtype],
+      mealie_user_id: userId,
+      status: attending ? 'home' : 'out',
+    }),
+  })
+  await loadVisibleRangeData()
+  if (d === selectedDate.value && mtype === mealType.value) {
+    await loadDayDetails()
+  }
 }
 
 async function handleRateRecipe(recipeId, score) {
@@ -172,7 +263,7 @@ async function handleRateRecipe(recipeId, score) {
     body: JSON.stringify({ score }),
   })
   myRatings[recipeId] = score
-  await loadInitialData()
+  await loadDayDetails()
 }
 
 async function handlePlanRecipe(item) {
@@ -212,13 +303,26 @@ async function handleSyncNow() {
 }
 
 async function handleCreateRule(payload) {
-  await apiFetch('/api/rules', { method: 'POST', body: JSON.stringify(payload) })
-  await Promise.all([loadRules(), loadMonthAttendance(), loadDayDetails()])
+  for (const uid of payload.user_ids) {
+    await apiFetch('/api/rules', {
+      method: 'POST',
+      body: JSON.stringify({
+        mealie_user_id: uid,
+        weekday: payload.weekday,
+        meal_type: payload.meal_type,
+        status: payload.status,
+        start_date: payload.start_date,
+        end_date: payload.end_date,
+        label: payload.label,
+      }),
+    })
+  }
+  await Promise.all([loadRules(), loadVisibleRangeData(), loadDayDetails()])
 }
 
 async function handleDeleteRule(ruleId) {
   await apiFetch(`/api/rules/${ruleId}`, { method: 'DELETE' })
-  await Promise.all([loadRules(), loadMonthAttendance(), loadDayDetails()])
+  await Promise.all([loadRules(), loadVisibleRangeData(), loadDayDetails()])
 }
 
 async function handleAddException(ruleId, dateStr) {
@@ -226,12 +330,22 @@ async function handleAddException(ruleId, dateStr) {
     method: 'POST',
     body: JSON.stringify({ date: dateStr }),
   })
-  await Promise.all([loadRules(), loadMonthAttendance(), loadDayDetails()])
+  await Promise.all([loadRules(), loadVisibleRangeData(), loadDayDetails()])
 }
 
 async function handleUpdateMember(memberId, payload) {
   await apiFetch(`/api/household/${memberId}`, { method: 'PUT', body: JSON.stringify(payload) })
   await loadInitialData()
+}
+
+async function handleUpdatePreferences(payload) {
+  const updated = await apiFetch('/api/profile', { method: 'PUT', body: JSON.stringify(payload) })
+  weekStartDay.value = updated.week_start_day
+  viewMode.value = updated.calendar_view
+  if (currentUser.value) {
+    currentUser.value.week_start_day = updated.week_start_day
+    currentUser.value.calendar_view = updated.calendar_view
+  }
 }
 
 watch([selectedDate, mealType], () => {
@@ -252,7 +366,6 @@ onMounted(async () => {
 <template>
   <div v-if="checkingSession" class="login-wrap">Loading...</div>
 
-  <!-- Login View -->
   <div v-else-if="!authenticated" class="login-wrap">
     <form class="login-card" @submit.prevent="handleLogin">
       <h1>Family Meal Planner</h1>
@@ -272,7 +385,6 @@ onMounted(async () => {
     </form>
   </div>
 
-  <!-- Authenticated App -->
   <div v-else>
     <div v-if="mealieUnavailable" class="banner-warn">
       Mealie is currently unreachable. Showing cached recipes; adding meals to Mealie is temporarily disabled.
@@ -307,16 +419,18 @@ onMounted(async () => {
 
     <main class="workspace">
       <CalendarView
-        :year="year"
-        :month="month"
+        :anchor-date="anchorDate"
+        v-model:view-mode="viewMode"
+        :week-start-day="weekStartDay"
         v-model:meal-type="mealType"
         :selected-date="selectedDate"
         :attendance="attendance"
         :household="household"
         :contexts="contexts"
         :undo-available="true"
-        @change-month="changeMonth"
+        @navigate="navigateCalendar"
         @select-date="selectedDate = $event"
+        @open-day-modal="openDayModal"
         @toggle-badge="handleToggleBadge"
         @range-set="handleRangeSet"
         @undo="handleUndo"
@@ -327,7 +441,7 @@ onMounted(async () => {
         :meal-type="mealType"
         :recommendations="recommendations"
         :my-ratings="myRatings"
-        :context="contexts[selectedDate]"
+        :context="contexts[`${selectedDate}:${mealType}`]"
         :mealie-public-url="mealiePublicUrl"
         :loading="loadingRecs"
         :planning-recipe-id="planningRecipeId"
@@ -335,8 +449,20 @@ onMounted(async () => {
         @rate-recipe="handleRateRecipe"
         @plan-recipe="handlePlanRecipe"
         @show-vetoed="loadDayDetails(true)"
+        @open-day-modal="openDayModal"
       />
     </main>
+
+    <DayMealsModal
+      v-if="dayModalDate"
+      :date="dayModalDate"
+      :household="household"
+      :attendance="attendance"
+      :day-contexts="modalDayContexts"
+      @close="dayModalDate = null"
+      @toggle-meal-planned="handleModalToggleMealPlanned"
+      @toggle-user-attending="handleModalToggleUserAttending"
+    />
 
     <RulesModal
       v-if="showRulesModal"
@@ -348,6 +474,7 @@ onMounted(async () => {
       @delete-rule="handleDeleteRule"
       @add-exception="handleAddException"
       @update-member="handleUpdateMember"
+      @update-preferences="handleUpdatePreferences"
     />
   </div>
 </template>

@@ -13,6 +13,7 @@ const emit = defineEmits([
   'delete-rule',
   'add-exception',
   'update-member',
+  'update-preferences',
 ])
 
 const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -20,7 +21,7 @@ const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Satur
 const activeMembers = () => (props.household || []).filter((m) => m.active !== false)
 
 const newRule = reactive({
-  mealie_user_id: activeMembers()[0]?.mealie_user_id || '',
+  mealie_user_id: 'ALL',
   weekday: 2,
   meal_type: 'dinner',
   status: 'out',
@@ -29,16 +30,41 @@ const newRule = reactive({
   label: '',
 })
 
+const prefs = reactive({
+  week_start_day: props.currentUser?.week_start_day ?? 0,
+  calendar_view: props.currentUser?.calendar_view ?? 'month',
+})
+const prefsSaved = ref(false)
+
 const exceptionDates = reactive({})
 const savedMemberId = ref('')
 
 function submitRule() {
   if (!newRule.label.trim()) return
+  const targetIds =
+    newRule.mealie_user_id === 'ALL'
+      ? activeMembers().map((m) => m.mealie_user_id)
+      : [newRule.mealie_user_id]
+
   emit('create-rule', {
-    ...newRule,
+    user_ids: targetIds,
+    weekday: newRule.weekday,
+    meal_type: newRule.meal_type,
+    status: newRule.status,
+    start_date: newRule.start_date,
     end_date: newRule.end_date || null,
+    label: newRule.label.trim(),
   })
   newRule.label = ''
+}
+
+function savePreferences() {
+  emit('update-preferences', {
+    week_start_day: Number(prefs.week_start_day),
+    calendar_view: prefs.calendar_view,
+  })
+  prefsSaved.value = true
+  setTimeout(() => (prefsSaved.value = false), 1800)
 }
 
 function saveMember(member) {
@@ -68,15 +94,39 @@ function userName(uid) {
   <div class="modal-backdrop" @click.self="emit('close')">
     <div class="modal-box">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px">
-        <h2 style="margin: 0; font-size: 1.2rem">Configure Household &amp; Rules</h2>
+        <h2 style="margin: 0; font-size: 1.2rem">Configure Calendar, Household &amp; Rules</h2>
         <button @click="emit('close')">Close</button>
+      </div>
+
+      <!-- Personal Calendar Display Preferences -->
+      <div class="panel-section">
+        <h3 style="margin: 0 0 8px; font-size: 0.95rem">My Calendar Preferences</h3>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center">
+          <label style="font-size: 0.85rem">
+            Week starts on:
+            <select v-model.number="prefs.week_start_day" style="margin-left: 4px">
+              <option :value="0">Sunday</option>
+              <option :value="1">Monday</option>
+            </select>
+          </label>
+          <label style="font-size: 0.85rem">
+            Default view:
+            <select v-model="prefs.calendar_view" style="margin-left: 4px">
+              <option value="month">Month</option>
+              <option value="2week">2 Weeks</option>
+              <option value="1week">1 Week</option>
+            </select>
+          </label>
+          <button class="primary" @click="savePreferences">Save Preferences</button>
+          <span v-if="prefsSaved" style="color: var(--success); font-size: 0.8rem">Saved!</span>
+        </div>
       </div>
 
       <!-- Household Visibility & Badge Configuration -->
       <div class="panel-section">
         <h3 style="margin: 0 0 4px; font-size: 0.95rem">Household Members on Calendar</h3>
         <p style="margin: 0 0 10px; font-size: 0.8rem; color: var(--muted)">
-          Check who appears on the monthly calendar and counts toward meal recommendations.
+          Check who appears on the calendar and counts toward meal recommendations.
         </p>
 
         <div
@@ -84,7 +134,7 @@ function userName(uid) {
           :key="member.mealie_user_id"
           style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px"
         >
-          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; min-width: 90px; font-size: 0.85rem; font-weight: 600">
+          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; min-width: 82px; font-size: 0.85rem; font-weight: 600">
             <input
               type="checkbox"
               :checked="member.active !== false"
@@ -102,11 +152,12 @@ function userName(uid) {
         </div>
       </div>
 
-      <!-- Add New Recurring Rule -->
+      <!-- Add New Recurring Rule (with "All" option) -->
       <div class="panel-section">
         <h3 style="margin: 0 0 8px; font-size: 0.95rem">Add Recurring Schedule Rule</h3>
         <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center">
           <select v-model="newRule.mealie_user_id">
+            <option value="ALL">All Household Members</option>
             <option v-for="u in activeMembers()" :key="u.mealie_user_id" :value="u.mealie_user_id">
               {{ u.display_name }}
             </option>

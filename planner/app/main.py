@@ -83,6 +83,8 @@ class ProfileUpdate(BaseModel):
     initials: str | None = Field(default=None, min_length=1, max_length=4)
     color_code: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
     active: bool | None = None
+    week_start_day: int | None = Field(default=None, ge=0, le=1)
+    calendar_view: str | None = Field(default=None, pattern=r"^(month|2week|1week)$")
 
 
 class AttendancePutRequest(BaseModel):
@@ -121,6 +123,7 @@ class ContextUpdateRequest(BaseModel):
     meal_type: str = Field(default="dinner", pattern=r"^(breakfast|lunch|dinner)$")
     require_leftovers: bool = False
     max_prep_time: int | None = Field(default=None, ge=5, le=480)
+    is_planned: bool = True
 
 
 class RecipeMetaUpdateRequest(BaseModel):
@@ -202,6 +205,8 @@ def get_my_profile(
             "display_name": profile.display_name,
             "initials": profile.initials,
             "color_code": profile.color_code,
+            "week_start_day": profile.week_start_day,
+            "calendar_view": profile.calendar_view,
         },
         "household": [
             {
@@ -232,6 +237,10 @@ def update_my_profile(
         profile.initials = payload.initials.strip().upper()
     if payload.color_code is not None:
         profile.color_code = payload.color_code.upper()
+    if payload.week_start_day is not None:
+        profile.week_start_day = payload.week_start_day
+    if payload.calendar_view is not None:
+        profile.calendar_view = payload.calendar_view
 
     db.commit()
     db.refresh(profile)
@@ -240,6 +249,8 @@ def update_my_profile(
         "display_name": profile.display_name,
         "initials": profile.initials,
         "color_code": profile.color_code,
+        "week_start_day": profile.week_start_day,
+        "calendar_view": profile.calendar_view,
     }
 
 
@@ -519,6 +530,30 @@ def add_rule_exception(
 
 # --- Day Context, Recipe Meta & Leftover Chains ---
 
+@app.get("/api/contexts")
+def get_meal_contexts_range(
+    from_date: date = Query(..., alias="from"),
+    to_date: date = Query(..., alias="to"),
+    _: dict = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.query(MealContext)
+        .filter(MealContext.date >= from_date, MealContext.date <= to_date)
+        .all()
+    )
+    return [
+        {
+            "date": r.date.isoformat(),
+            "meal_type": r.meal_type,
+            "require_leftovers": r.require_leftovers,
+            "max_prep_time": r.max_prep_time,
+            "is_planned": r.is_planned,
+        }
+        for r in rows
+    ]
+
+
 @app.get("/api/context")
 def get_meal_context(
     target_date: date = Query(..., alias="date"),
@@ -531,11 +566,13 @@ def get_meal_context(
         .filter(MealContext.date == target_date, MealContext.meal_type == meal_type)
         .first()
     )
+    default_planned = False if meal_type == "breakfast" else True
     return {
         "date": target_date.isoformat(),
         "meal_type": meal_type,
         "require_leftovers": ctx.require_leftovers if ctx else False,
         "max_prep_time": ctx.max_prep_time if ctx else None,
+        "is_planned": ctx.is_planned if ctx else default_planned,
     }
 
 
@@ -556,11 +593,13 @@ def put_meal_context(
             meal_type=payload.meal_type,
             require_leftovers=payload.require_leftovers,
             max_prep_time=payload.max_prep_time,
+            is_planned=payload.is_planned,
         )
         db.add(ctx)
     else:
         ctx.require_leftovers = payload.require_leftovers
         ctx.max_prep_time = payload.max_prep_time
+        ctx.is_planned = payload.is_planned
 
     db.commit()
     return {
@@ -568,6 +607,7 @@ def put_meal_context(
         "meal_type": ctx.meal_type,
         "require_leftovers": ctx.require_leftovers,
         "max_prep_time": ctx.max_prep_time,
+        "is_planned": ctx.is_planned,
     }
 
 

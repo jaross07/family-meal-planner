@@ -28,6 +28,8 @@ class RecipeCache(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    week_start_day: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    calendar_view: Mapped[str] = mapped_column(String(16), default="month", nullable=False)
 
 
 class RecipeMeta(Base):
@@ -61,6 +63,7 @@ class MealContext(Base):
     meal_type: Mapped[str] = mapped_column(String(32), nullable=False)
     require_leftovers: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     max_prep_time: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_planned: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     __table_args__ = (
         UniqueConstraint("date", "meal_type", name="uq_meal_context_date_type"),
@@ -75,6 +78,8 @@ class UserProfile(Base):
     initials: Mapped[str] = mapped_column(String(4), nullable=False)
     color_code: Mapped[str] = mapped_column(String(7), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    week_start_day: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    calendar_view: Mapped[str] = mapped_column(String(16), default="month", nullable=False)
 
     __table_args__ = (
         CheckConstraint("LENGTH(color_code) = 7 AND color_code LIKE '#%'", name="ck_user_profile_color_hex"),
