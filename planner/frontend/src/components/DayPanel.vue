@@ -5,6 +5,7 @@ const props = defineProps({
   selectedDate: String,
   mealType: String,
   recommendations: Object,
+  dayAttendance: Array,
   myRatings: Object,
   context: Object,
   mealiePublicUrl: String,
@@ -30,6 +31,10 @@ const formattedDate = computed(() => {
   })
 })
 
+const scheduleNotes = computed(() =>
+  (props.dayAttendance || []).filter((entry) => entry.label || entry.status !== 'home')
+)
+
 function toggleFastEasy() {
   const nextPrep = props.context?.max_prep_time ? null : 25
   emit('update-context', {
@@ -37,6 +42,7 @@ function toggleFastEasy() {
     meal_type: props.mealType,
     require_leftovers: Boolean(props.context?.require_leftovers),
     max_prep_time: nextPrep,
+    is_planned: props.context?.is_planned ?? (props.mealType === 'dinner'),
   })
 }
 
@@ -46,6 +52,7 @@ function toggleMakeExtra() {
     meal_type: props.mealType,
     require_leftovers: !props.context?.require_leftovers,
     max_prep_time: props.context?.max_prep_time ?? null,
+    is_planned: props.context?.is_planned ?? (props.mealType === 'dinner'),
   })
 }
 
@@ -70,6 +77,18 @@ function mealieRecipeUrl(slug) {
         <span v-else>No diners home</span>
       </div>
 
+      <!-- Schedule Explanations moved from calendar grid to sidebar -->
+      <div v-if="scheduleNotes.length" style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px">
+        <div
+          v-for="note in scheduleNotes"
+          :key="note.mealie_user_id"
+          style="font-size: 0.8rem; color: var(--muted); background: #f8fafc; border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px"
+        >
+          <strong>{{ note.display_name }}</strong>: {{ note.status }}
+          <span v-if="note.label"> — {{ note.label }}</span>
+        </div>
+      </div>
+
       <div class="toggle-row">
         <button
           class="toggle-chip"
@@ -89,6 +108,10 @@ function mealieRecipeUrl(slug) {
     </div>
 
     <div v-if="loading" style="color: var(--muted); padding: 12px 0">Loading recommendations...</div>
+
+    <div v-else-if="context && context.is_planned === false" style="color: var(--muted); padding: 12px 0">
+      This meal is marked as not planned. Double-click the day or click <strong>Edit Day Meals</strong> to enable it.
+    </div>
 
     <div v-else-if="recommendations?.reason === 'no_diners'" style="color: var(--muted); padding: 12px 0">
       Everyone is marked out or away for this meal.

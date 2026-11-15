@@ -34,7 +34,7 @@ const activeHousehold = computed(() =>
 function isMealPlanned(mealKey) {
   const ctx = props.dayContexts?.[mealKey]
   if (ctx && typeof ctx.is_planned === 'boolean') return ctx.is_planned
-  return mealKey !== 'breakfast'
+  return mealKey === 'dinner'
 }
 
 function getUserEntry(mealKey, userId) {

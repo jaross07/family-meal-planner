@@ -566,7 +566,7 @@ def get_meal_context(
         .filter(MealContext.date == target_date, MealContext.meal_type == meal_type)
         .first()
     )
-    default_planned = False if meal_type == "breakfast" else True
+    default_planned = (meal_type == "dinner")
     return {
         "date": target_date.isoformat(),
         "meal_type": meal_type,

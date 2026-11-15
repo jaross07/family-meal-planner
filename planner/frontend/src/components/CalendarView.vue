@@ -2,9 +2,9 @@
 import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
-  anchorDate: String, // YYYY-MM-DD
-  viewMode: String, // 'month' | '2week' | '1week'
-  weekStartDay: Number, // 0 = Sun, 1 = Mon
+  anchorDate: String,
+  viewMode: String,
+  weekStartDay: Number,
   mealType: String,
   selectedDate: String,
   attendance: Array,
@@ -28,6 +28,8 @@ const dragTargetUser = ref('ALL')
 const dragStatus = ref('away')
 const dragStart = ref(null)
 const dragEnd = ref(null)
+const rangeFrom = ref('')
+const rangeTo = ref('')
 
 const activeHousehold = computed(() =>
   (props.household || []).filter((m) => m.active !== false)
@@ -124,7 +126,7 @@ const attendanceByDate = computed(() => {
 function isDayMealPlanned(iso) {
   const ctx = props.contexts?.[`${iso}:${props.mealType}`]
   if (ctx && typeof ctx.is_planned === 'boolean') return ctx.is_planned
-  return props.mealType !== 'breakfast'
+  return props.mealType === 'dinner'
 }
 
 function isInDragRange(iso) {
@@ -135,37 +137,41 @@ function isInDragRange(iso) {
   return iso >= a && iso <= b
 }
 
-function onCellMouseDown(iso, e) {
+function onCellPointerDown(iso, e) {
   if (e.button !== 0) return
   emit('select-date', iso)
   dragStart.value = iso
   dragEnd.value = iso
 }
 
-function onCellMouseEnter(iso) {
+function onCellPointerEnter(iso) {
   if (dragStart.value) {
     dragEnd.value = iso
   }
 }
 
-function onMouseUp() {
+function applyRange(start, end) {
+  const userIds =
+    dragTargetUser.value === 'ALL'
+      ? activeHousehold.value.map((m) => m.mealie_user_id)
+      : [dragTargetUser.value]
+  if (userIds.length && start && end) {
+    const [s, e] = start <= end ? [start, end] : [end, start]
+    emit('range-set', {
+      start_date: s,
+      end_date: e,
+      meal_types: [props.mealType],
+      user_ids: userIds,
+      status: dragStatus.value,
+    })
+  }
+}
+
+function onPointerUp() {
   if (dragStart.value && dragEnd.value && dragStart.value !== dragEnd.value) {
-    const [start, end] = dragStart.value <= dragEnd.value
-      ? [dragStart.value, dragEnd.value]
-      : [dragEnd.value, dragStart.value]
-    const userIds =
-      dragTargetUser.value === 'ALL'
-        ? activeHousehold.value.map((m) => m.mealie_user_id)
-        : [dragTargetUser.value]
-    if (userIds.length) {
-      emit('range-set', {
-        start_date: start,
-        end_date: end,
-        meal_types: [props.mealType],
-        user_ids: userIds,
-        status: dragStatus.value,
-      })
-    }
+    rangeFrom.value = dragStart.value <= dragEnd.value ? dragStart.value : dragEnd.value
+    rangeTo.value = dragStart.value <= dragEnd.value ? dragEnd.value : dragStart.value
+    applyRange(dragStart.value, dragEnd.value)
   }
   dragStart.value = null
   dragEnd.value = null
@@ -177,15 +183,10 @@ function badgeStyle(entry) {
   }
   return { borderColor: entry.color_code }
 }
-
-function ruleLabelsForDate(iso) {
-  const entries = attendanceByDate.value[iso] || []
-  return entries.filter((e) => e.label).map((e) => `${e.display_name}: ${e.label}`)
-}
 </script>
 
 <template>
-  <div class="card" @mouseup="onMouseUp" @mouseleave="onMouseUp">
+  <div class="card" @pointerup="onPointerUp" @pointerleave="onPointerUp">
     <div class="cal-header">
       <div class="cal-controls">
         <button @click="emit('navigate', -1)">&larr;</button>
@@ -205,28 +206,31 @@ function ruleLabelsForDate(iso) {
         </select>
       </div>
 
-      <div class="cal-controls" title="Click and drag across multiple days on the calendar to bulk-set attendance">
-        <span style="font-size: 0.78rem; color: var(--muted)">Click &amp; drag days:</span>
-        <select v-model="dragTargetUser" aria-label="Drag target user">
+      <div class="cal-controls" title="Drag across calendar cells or pick start/end dates to bulk-set attendance">
+        <span style="font-size: 0.78rem; color: var(--muted)">Bulk set:</span>
+        <select v-model="dragTargetUser" aria-label="Target user">
           <option value="ALL">All Family</option>
           <option v-for="u in activeHousehold" :key="u.mealie_user_id" :value="u.mealie_user_id">
             {{ u.display_name }}
           </option>
         </select>
-        <select v-model="dragStatus" aria-label="Drag status">
+        <select v-model="dragStatus" aria-label="Status">
           <option value="away">Away</option>
           <option value="out">Out</option>
           <option value="home">Home</option>
         </select>
+        <input v-model="rangeFrom" type="date" aria-label="Start date" style="padding: 4px 6px; font-size: 0.78rem" />
+        <input v-model="rangeTo" type="date" aria-label="End date" style="padding: 4px 6px; font-size: 0.78rem" />
+        <button :disabled="!rangeFrom || !rangeTo" @click="applyRange(rangeFrom, rangeTo)">Apply</button>
         <button :disabled="!undoAvailable" @click="emit('undo')">Undo</button>
       </div>
     </div>
 
     <div style="font-size: 0.75rem; color: var(--muted); margin-bottom: 8px">
-      Tip: Double-click any day to check/uncheck Breakfast, Lunch &amp; Dinner attendance.
+      Tip: Click and drag across days (or use the date boxes above) to bulk-update; double-click a day to edit all meals.
     </div>
 
-    <div class="cal-grid">
+    <div class="cal-grid" style="touch-action: none">
       <div v-for="dow in dowHeaders" :key="dow" class="cal-dow">
         {{ dow }}
       </div>
@@ -240,9 +244,9 @@ function ruleLabelsForDate(iso) {
           selected: cell.iso === selectedDate,
           'drag-highlight': isInDragRange(cell.iso),
         }"
-        :style="{ minHeight: viewMode === 'month' ? '102px' : '150px' }"
-        @mousedown="onCellMouseDown(cell.iso, $event)"
-        @mouseenter="onCellMouseEnter(cell.iso)"
+        :style="{ minHeight: viewMode === 'month' ? '92px' : '136px' }"
+        @pointerdown="onCellPointerDown(cell.iso, $event)"
+        @pointerenter="onCellPointerEnter(cell.iso)"
         @dblclick.stop="emit('open-day-modal', cell.iso)"
       >
         <div class="cell-top">
@@ -267,16 +271,12 @@ function ruleLabelsForDate(iso) {
             class="diner-badge"
             :class="[entry.status, { 'from-rule': entry.source === 'rule' }]"
             :style="badgeStyle(entry)"
-            :title="`${entry.display_name}: ${entry.status} (${entry.source}) — click to cycle`"
-            @mousedown.stop
+            :title="`${entry.display_name}: ${entry.status}${entry.label ? ' (' + entry.label + ')' : ''} — click to cycle`"
+            @pointerdown.stop
             @click.stop="emit('toggle-badge', entry)"
           >
             {{ entry.initials }} · {{ entry.status }}
           </button>
-        </div>
-
-        <div v-for="lbl in ruleLabelsForDate(cell.iso)" :key="lbl" class="rule-tag" :title="lbl">
-          {{ lbl }}
         </div>
       </div>
     </div>

@@ -440,6 +440,7 @@ onMounted(async () => {
         :selected-date="selectedDate"
         :meal-type="mealType"
         :recommendations="recommendations"
+        :day-attendance="attendance.filter(a => a.date === selectedDate && a.meal_type === mealType)"
         :my-ratings="myRatings"
         :context="contexts[`${selectedDate}:${mealType}`]"
         :mealie-public-url="mealiePublicUrl"
