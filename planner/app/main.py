@@ -736,6 +736,181 @@ async def plan_meal_in_mealie(
     return {"status": "planned", "mealie_entry": created}
 
 
+class BatchPlanItem(BaseModel):
+    date: date
+    meal_type: str = Field(default="dinner", pattern=r"^(breakfast|lunch|dinner|side)$")
+    mealie_recipe_id: str
+
+
+class BatchPlanRequest(BaseModel):
+    items: list[BatchPlanItem]
+
+
+@app.get("/api/recipes/{recipe_id}/image")
+async def get_recipe_thumbnail(
+    recipe_id: str,
+    _: dict = Depends(get_current_session),
+):
+    """Proxy recipe thumbnail image from Mealie."""
+    img = await mealie_client.fetch_recipe_image(recipe_id)
+    if not img:
+        return Response(status_code=404)
+    content, media_type = img
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
+
+
+@app.get("/api/planned")
+async def get_planned_meals_range(
+    from_date: date = Query(..., alias="from"),
+    to_date: date = Query(..., alias="to"),
+    session: dict = Depends(get_current_session),
+):
+    """Fetch existing planned meals from Mealie for the visible calendar range."""
+    try:
+        entries = await mealie_client.get_planned_meals(
+            start_date=from_date,
+            end_date=to_date,
+            user_token=session["mealie_token"],
+        )
+        return {
+            "mealie_available": True,
+            "items": [
+                {
+                    "id": e["id"],
+                    "date": e["date"].isoformat(),
+                    "meal_type": e["entry_type"],
+                    "mealie_recipe_id": e["recipe_id"],
+                    "name": e["recipe_name"],
+                    "slug": e["slug"],
+                }
+                for e in entries
+            ],
+        }
+    except MealieUnavailableError:
+        return {"mealie_available": False, "items": []}
+
+
+@app.delete("/api/plan/{plan_id}")
+async def remove_planned_meal(
+    plan_id: str,
+    session: dict = Depends(get_current_session),
+):
+    """Delete a planned meal entry from Mealie."""
+    try:
+        await mealie_client.delete_meal_plan_entry(
+            plan_id=plan_id,
+            user_token=session["mealie_token"],
+        )
+        return {"status": "deleted", "id": plan_id}
+    except MealieAuthError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    except MealieUnavailableError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+
+@app.get("/api/week-preview")
+async def preview_week_plan(
+    start_date: date = Query(...),
+    meal_type: str = Query(default="dinner"),
+    session: dict = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    """Generate a 7-day non-repeating meal plan preview respecting attendance & day context."""
+    days_out = []
+    used_recipe_ids: set[str] = set()
+    mealie_ok = True
+
+    for offset in range(7):
+        day = start_date + timedelta(days=offset)
+        ctx = (
+            db.query(MealContext)
+            .filter(MealContext.date == day, MealContext.meal_type == meal_type)
+            .first()
+        )
+        default_planned = (meal_type == "dinner")
+        is_planned = ctx.is_planned if ctx else default_planned
+
+        if not is_planned:
+            days_out.append({
+                "date": day.isoformat(),
+                "is_planned": False,
+                "reason": "not_planned",
+                "diners": [],
+                "selected_recipe_id": None,
+                "candidates": [],
+            })
+            continue
+
+        rec = await generate_recommendations(
+            db=db,
+            target_date=day,
+            meal_type=meal_type,
+            page=1,
+            include_vetoed=False,
+            user_token=session["mealie_token"],
+        )
+        if rec.get("mealie_available") is False:
+            mealie_ok = False
+
+        candidates = rec.get("items", [])
+        chosen = next((c for c in candidates if c["mealie_recipe_id"] not in used_recipe_ids), None)
+        if chosen is None and candidates:
+            chosen = candidates[0]
+
+        if chosen:
+            used_recipe_ids.add(chosen["mealie_recipe_id"])
+
+        days_out.append({
+            "date": day.isoformat(),
+            "is_planned": True,
+            "reason": rec.get("reason"),
+            "diners": rec.get("diners", []),
+            "selected_recipe_id": chosen["mealie_recipe_id"] if chosen else None,
+            "candidates": candidates[:8],
+        })
+
+    return {
+        "start_date": start_date.isoformat(),
+        "meal_type": meal_type,
+        "mealie_available": mealie_ok,
+        "days": days_out,
+    }
+
+
+@app.post("/api/plan-week")
+async def commit_week_plan(
+    payload: BatchPlanRequest,
+    session: dict = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    """Write multiple planned meals to Mealie in one batch."""
+    created = []
+    for item in payload.items:
+        cached = db.get(RecipeCache, item.mealie_recipe_id)
+        title = cached.name if cached else ""
+        try:
+            res = await mealie_client.create_meal_plan_entry(
+                plan_date=item.date,
+                entry_type=item.meal_type,
+                recipe_id=item.mealie_recipe_id,
+                user_token=session["mealie_token"],
+                title=title,
+            )
+            created.append({"date": item.date.isoformat(), "mealie_entry": res})
+        except MealieAuthError as exc:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+        except MealieUnavailableError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(exc),
+            ) from exc
+    return {"status": "planned", "count": len(created), "entries": created}
+
+
 @app.post("/api/sync")
 async def trigger_recipe_sync(
     _: dict = Depends(get_current_session),

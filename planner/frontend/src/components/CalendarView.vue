@@ -10,6 +10,7 @@ const props = defineProps({
   attendance: Array,
   household: Array,
   contexts: Object,
+  plannedMeals: Array,
   undoAvailable: Boolean,
 })
 
@@ -111,6 +112,16 @@ const headerLabel = computed(() => {
   const fStr = first.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   const lStr = last.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   return `${fStr} – ${lStr}`
+})
+
+const plannedByDate = computed(() => {
+  const map = {}
+  for (const item of props.plannedMeals || []) {
+    if (item.meal_type !== props.mealType) continue
+    if (!map[item.date]) map[item.date] = []
+    map[item.date].push(item)
+  }
+  return map
 })
 
 const attendanceByDate = computed(() => {
@@ -277,6 +288,14 @@ function badgeStyle(entry) {
           >
             {{ entry.initials }} · {{ entry.status }}
           </button>
+        </div>
+        <div
+          v-for="pm in plannedByDate[cell.iso] || []"
+          :key="pm.id || pm.mealie_recipe_id"
+          style="margin-top: 4px; background: #dcfce7; color: #166534; border: 1px solid #86efac; border-radius: 5px; padding: 2px 5px; font-size: 0.7rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis"
+          :title="`Planned: ${pm.name}`"
+        >
+          ✓ {{ pm.name }}
         </div>
       </div>
     </div>

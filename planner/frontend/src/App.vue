@@ -38,6 +38,7 @@ const mealType = ref('dinner')
 const selectedDate = ref(todayIso)
 
 const attendance = ref([])
+const plannedMeals = ref([])
 const contexts = reactive({})
 const rules = ref([])
 const recommendations = ref(null)
@@ -98,11 +99,13 @@ async function loadVisibleRangeData() {
   const fromStr = toIso(start)
   const toStr = toIso(end)
 
-  const [attData, ctxList] = await Promise.all([
+  const [attData, ctxList, planData] = await Promise.all([
     apiFetch(`/api/attendance?from=${fromStr}&to=${toStr}`),
     apiFetch(`/api/contexts?from=${fromStr}&to=${toStr}`),
+    apiFetch(`/api/planned?from=${fromStr}&to=${toStr}`),
   ])
   attendance.value = attData.items
+  plannedMeals.value = planData.items || []
   for (const c of ctxList) {
     contexts[`${c.date}:${c.meal_type}`] = c
   }
@@ -268,6 +271,31 @@ async function handleRateRecipe(recipeId, score) {
   await loadDayDetails()
 }
 
+async function handleRemovePlanned(entry) {
+  await apiFetch(`/api/plan/${entry.id}`, { method: 'DELETE' })
+  notify(`Removed "${entry.name}" from Mealie`)
+  await loadVisibleRangeData()
+}
+
+async function handleReplacePlanned(oldEntry, newItem) {
+  planningRecipeId.value = newItem.mealie_recipe_id
+  try {
+    await apiFetch(`/api/plan/${oldEntry.id}`, { method: 'DELETE' })
+    await apiFetch('/api/plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        date: selectedDate.value,
+        meal_type: mealType.value,
+        mealie_recipe_id: newItem.mealie_recipe_id,
+      }),
+    })
+    notify(`Replaced "${oldEntry.name}" with "${newItem.name}"`)
+    await loadVisibleRangeData()
+  } finally {
+    planningRecipeId.value = null
+  }
+}
+
 async function handlePlanRecipe(item) {
   planningRecipeId.value = item.mealie_recipe_id
   try {
@@ -281,6 +309,7 @@ async function handlePlanRecipe(item) {
     })
     mealieUnavailable.value = false
     notify(`Added "${item.name}" to Mealie's meal plan!`)
+    await loadVisibleRangeData()
   } catch (err) {
     if (err.status === 503) mealieUnavailable.value = true
     notify(err.message)
@@ -430,6 +459,7 @@ onMounted(async () => {
         :attendance="attendance"
         :household="household"
         :contexts="contexts"
+        :planned-meals="plannedMeals"
         :undo-available="true"
         @navigate="navigateCalendar"
         @select-date="selectedDate = $event"
@@ -443,6 +473,7 @@ onMounted(async () => {
         :selected-date="selectedDate"
         :meal-type="mealType"
         :recommendations="recommendations"
+        :planned-meals="plannedMeals.filter(m => m.date === selectedDate && m.meal_type === mealType)"
         :day-attendance="attendance.filter(a => a.date === selectedDate && a.meal_type === mealType)"
         :my-ratings="myRatings"
         :context="contexts[`${selectedDate}:${mealType}`]"
@@ -452,6 +483,8 @@ onMounted(async () => {
         @update-context="handleUpdateContext"
         @rate-recipe="handleRateRecipe"
         @plan-recipe="handlePlanRecipe"
+        @remove-planned="handleRemovePlanned"
+        @replace-planned="handleReplacePlanned"
         @show-vetoed="loadDayDetails(true)"
         @open-day-modal="openDayModal"
       />
@@ -475,7 +508,7 @@ onMounted(async () => {
       :week-start-day="weekStartDay"
       :meal-type="mealType"
       @close="showWeekModal = false"
-      @planned="(n) => notify(`Added ${n} meal(s) to Mealie's weekly plan!`)"
+      @planned="async (n) => { notify(`Added ${n} meal(s) to Mealie's weekly plan!`); await loadVisibleRangeData() }"
     />
 
     <RulesModal

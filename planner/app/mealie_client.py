@@ -177,10 +177,12 @@ class MealieClient:
                 if recipe_id and entry.get("date"):
                     planned.append(
                         {
+                            "id": str(entry.get("id", "")),
                             "date": datetime.strptime(entry["date"][:10], "%Y-%m-%d").date(),
                             "entry_type": entry.get("entryType", "dinner"),
                             "recipe_id": str(recipe_id),
-                            "recipe_name": recipe.get("name", ""),
+                            "recipe_name": recipe.get("name", "") or entry.get("title", ""),
+                            "slug": recipe.get("slug", ""),
                         }
                     )
             return planned
@@ -216,6 +218,40 @@ class MealieClient:
                 raise MealieUnavailableError(f"Mealie returned {resp.status_code} while creating meal plan")
             resp.raise_for_status()
             return resp.json()
+
+    async def delete_meal_plan_entry(self, plan_id: str, user_token: str) -> None:
+        """Delete an existing meal plan entry from Mealie."""
+        async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
+            try:
+                resp = await client.delete(
+                    f"/api/households/mealplans/{plan_id}",
+                    headers=self._headers(user_token),
+                )
+            except httpx.RequestError as exc:
+                raise MealieUnavailableError("Unable to delete meal plan entry in Mealie") from exc
+
+            if resp.status_code in (401, 403):
+                raise MealieAuthError("User token expired or lacks permission to delete Mealie meal plans")
+            if resp.status_code == 404:
+                return
+            if resp.status_code >= 500:
+                raise MealieUnavailableError(f"Mealie returned {resp.status_code} while deleting meal plan")
+            resp.raise_for_status()
+
+    async def fetch_recipe_image(self, recipe_id: str) -> tuple[bytes, str] | None:
+        """Fetch recipe thumbnail bytes from Mealie."""
+        async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
+            for variant in ("min-original.webp", "original.webp"):
+                try:
+                    resp = await client.get(
+                        f"/api/media/recipes/{recipe_id}/images/{variant}",
+                        headers=self._headers(),
+                    )
+                except httpx.RequestError:
+                    return None
+                if resp.status_code == 200 and resp.content:
+                    return resp.content, resp.headers.get("content-type", "image/webp")
+        return None
 
 
 mealie_client = MealieClient()

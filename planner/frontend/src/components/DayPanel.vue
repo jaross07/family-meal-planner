@@ -1,10 +1,11 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 const props = defineProps({
   selectedDate: String,
   mealType: String,
   recommendations: Object,
+  plannedMeals: Array,
   dayAttendance: Array,
   myRatings: Object,
   context: Object,
@@ -17,9 +18,14 @@ const emit = defineEmits([
   'update-context',
   'rate-recipe',
   'plan-recipe',
+  'remove-planned',
+  'replace-planned',
   'show-vetoed',
   'open-day-modal',
 ])
+
+const replacingEntry = ref(null)
+const brokenImages = ref({})
 
 const formattedDate = computed(() => {
   if (!props.selectedDate) return ''
@@ -60,6 +66,19 @@ function mealieRecipeUrl(slug) {
   const base = (props.mealiePublicUrl || '').replace(/\/$/, '')
   return slug ? `${base}/g/home/r/${slug}` : base
 }
+
+function recipeImageUrl(recipeId) {
+  return `/api/recipes/${recipeId}/image`
+}
+
+function chooseRecipe(item) {
+  if (replacingEntry.value) {
+    emit('replace-planned', replacingEntry.value, item)
+    replacingEntry.value = null
+  } else {
+    emit('plan-recipe', item)
+  }
+}
 </script>
 
 <template>
@@ -77,7 +96,6 @@ function mealieRecipeUrl(slug) {
         <span v-else>No diners home</span>
       </div>
 
-      <!-- Schedule Explanations moved from calendar grid to sidebar -->
       <div v-if="scheduleNotes.length" style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px">
         <div
           v-for="note in scheduleNotes"
@@ -107,6 +125,57 @@ function mealieRecipeUrl(slug) {
       </div>
     </div>
 
+    <!-- Currently Planned in Mealie Section -->
+    <div v-if="plannedMeals?.length" class="panel-section">
+      <div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; color: #166534; margin-bottom: 6px">
+        ✓ Planned in Mealie
+      </div>
+
+      <div
+        v-for="entry in plannedMeals"
+        :key="entry.id || entry.mealie_recipe_id"
+        style="border: 1px solid #86efac; background: #f0fdf4; border-radius: 8px; padding: 8px; margin-bottom: 6px; display: flex; gap: 10px; align-items: center"
+      >
+        <img
+          v-if="!brokenImages[entry.mealie_recipe_id]"
+          :src="recipeImageUrl(entry.mealie_recipe_id)"
+          alt=""
+          style="width: 52px; height: 52px; object-fit: cover; border-radius: 6px; flex-shrink: 0"
+          @error="brokenImages[entry.mealie_recipe_id] = true"
+        />
+        <div style="flex: 1; min-width: 0">
+          <div style="font-weight: 600; font-size: 0.9rem; color: #14532d">{{ entry.name }}</div>
+          <div style="display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap">
+            <a v-if="entry.slug" :href="mealieRecipeUrl(entry.slug)" target="_blank" rel="noopener">
+              <button type="button" style="padding: 3px 8px; font-size: 0.78rem">Open</button>
+            </a>
+            <button
+              type="button"
+              style="padding: 3px 8px; font-size: 0.78rem"
+              @click="replacingEntry = replacingEntry?.id === entry.id ? null : entry"
+            >
+              {{ replacingEntry?.id === entry.id ? 'Cancel Replace' : 'Replace' }}
+            </button>
+            <button
+              type="button"
+              class="danger"
+              style="padding: 3px 8px; font-size: 0.78rem"
+              @click="emit('remove-planned', entry)"
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="replacingEntry"
+        style="font-size: 0.8rem; color: #1e40af; background: #dbeafe; padding: 6px 8px; border-radius: 6px; margin-top: 6px"
+      >
+        Pick a recipe below to replace <strong>{{ replacingEntry.name }}</strong>.
+      </div>
+    </div>
+
     <div v-if="loading" style="color: var(--muted); padding: 12px 0">Loading recommendations...</div>
 
     <div v-else-if="context && context.is_planned === false" style="color: var(--muted); padding: 12px 0">
@@ -130,16 +199,26 @@ function mealieRecipeUrl(slug) {
 
     <div v-else>
       <div v-for="item in recommendations.items" :key="item.mealie_recipe_id" class="recipe-item">
-        <div class="recipe-title">{{ item.name }}</div>
-        <div class="recipe-meta">
-          <span>Score: {{ item.score }}</span>
-          <span v-if="item.prep_time_minutes">⏱ {{ item.prep_time_minutes }}m</span>
-          <span v-if="item.leftover_yield">🍱 High-yield</span>
-          <span v-if="item.last_planned_date">Last: {{ item.last_planned_date }}</span>
-        </div>
-
-        <div v-if="item.leftover_badge" class="leftover-pill">
-          ♻ {{ item.leftover_badge }}
+        <div style="display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px">
+          <img
+            v-if="!brokenImages[item.mealie_recipe_id]"
+            :src="recipeImageUrl(item.mealie_recipe_id)"
+            alt=""
+            style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px; flex-shrink: 0; border: 1px solid var(--border)"
+            @error="brokenImages[item.mealie_recipe_id] = true"
+          />
+          <div style="flex: 1; min-width: 0">
+            <div class="recipe-title">{{ item.name }}</div>
+            <div class="recipe-meta">
+              <span>Score: {{ item.score }}</span>
+              <span v-if="item.prep_time_minutes">⏱ {{ item.prep_time_minutes }}m</span>
+              <span v-if="item.leftover_yield">🍱 High-yield</span>
+              <span v-if="item.last_planned_date">Last: {{ item.last_planned_date }}</span>
+            </div>
+            <div v-if="item.leftover_badge" class="leftover-pill" style="margin-bottom: 0">
+              ♻ {{ item.leftover_badge }}
+            </div>
+          </div>
         </div>
 
         <div class="recipe-actions">
@@ -174,9 +253,15 @@ function mealieRecipeUrl(slug) {
             <button
               class="primary"
               :disabled="planningRecipeId === item.mealie_recipe_id"
-              @click="emit('plan-recipe', item)"
+              @click="chooseRecipe(item)"
             >
-              {{ planningRecipeId === item.mealie_recipe_id ? 'Planning...' : 'Plan it' }}
+              {{
+                planningRecipeId === item.mealie_recipe_id
+                  ? 'Saving...'
+                  : replacingEntry
+                  ? 'Use as Replacement'
+                  : 'Plan it'
+              }}
             </button>
           </div>
         </div>

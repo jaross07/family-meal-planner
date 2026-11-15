@@ -156,7 +156,14 @@ onMounted(loadPreview)
             </div>
           </div>
 
-          <div style="flex: 1; min-width: 240px">
+          <div style="flex: 1; min-width: 240px; display: flex; align-items: center; gap: 8px">
+            <img
+              v-if="selectedByDate[day.date]"
+              :src="`/api/recipes/${selectedByDate[day.date]}/image`"
+              alt=""
+              style="width: 40px; height: 40px; object-fit: cover; border-radius: 6px; flex-shrink: 0; border: 1px solid var(--border)"
+              @error="$event.target.style.display = 'none'"
+            />
             <select
               v-if="day.candidates?.length"
               v-model="selectedByDate[day.date]"
