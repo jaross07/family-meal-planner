@@ -25,7 +25,7 @@ def resolve_attendance_range(
     if (end_date - start_date).days > 62:
         raise ValueError("Date range cannot exceed 62 days")
 
-    profiles = db.query(UserProfile).order_by(UserProfile.display_name).all()
+    profiles = db.query(UserProfile).filter(UserProfile.active.is_(True)).order_by(UserProfile.display_name).all()
     if not profiles:
         return []
 

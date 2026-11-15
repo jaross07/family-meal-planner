@@ -229,8 +229,8 @@ async function handleAddException(ruleId, dateStr) {
   await Promise.all([loadRules(), loadMonthAttendance(), loadDayDetails()])
 }
 
-async function handleUpdateProfile(payload) {
-  await apiFetch('/api/profile', { method: 'PUT', body: JSON.stringify(payload) })
+async function handleUpdateMember(memberId, payload) {
+  await apiFetch(`/api/household/${memberId}`, { method: 'PUT', body: JSON.stringify(payload) })
   await loadInitialData()
 }
 
@@ -300,7 +300,7 @@ onMounted(async () => {
         <button :disabled="syncing" @click="handleSyncNow">
           {{ syncing ? 'Syncing...' : 'Sync Recipes' }}
         </button>
-        <button @click="showRulesModal = true">Rules &amp; Profile</button>
+        <button @click="showRulesModal = true">Configure</button>
         <button @click="handleLogout">Sign Out</button>
       </div>
     </header>
@@ -347,7 +347,7 @@ onMounted(async () => {
       @create-rule="handleCreateRule"
       @delete-rule="handleDeleteRule"
       @add-exception="handleAddException"
-      @update-profile="handleUpdateProfile"
+      @update-member="handleUpdateMember"
     />
   </div>
 </template>

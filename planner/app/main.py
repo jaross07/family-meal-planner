@@ -82,6 +82,7 @@ class ProfileUpdate(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=100)
     initials: str | None = Field(default=None, min_length=1, max_length=4)
     color_code: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    active: bool | None = None
 
 
 class AttendancePutRequest(BaseModel):
@@ -208,6 +209,7 @@ def get_my_profile(
                 "display_name": p.display_name,
                 "initials": p.initials,
                 "color_code": p.color_code,
+                "active": p.active,
             }
             for p in all_profiles
         ],
@@ -240,6 +242,38 @@ def update_my_profile(
         "color_code": profile.color_code,
     }
 
+
+
+
+@app.put("/api/household/{member_id}")
+def update_household_member(
+    member_id: str,
+    payload: ProfileUpdate,
+    _: dict = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    member = db.get(UserProfile, member_id)
+    if not member:
+        raise HTTPException(status_code=404, detail="Household member not found")
+
+    if payload.display_name is not None:
+        member.display_name = payload.display_name.strip()
+    if payload.initials is not None:
+        member.initials = payload.initials.strip().upper()
+    if payload.color_code is not None:
+        member.color_code = payload.color_code.upper()
+    if payload.active is not None:
+        member.active = payload.active
+
+    db.commit()
+    db.refresh(member)
+    return {
+        "mealie_user_id": member.mealie_user_id,
+        "display_name": member.display_name,
+        "initials": member.initials,
+        "color_code": member.color_code,
+        "active": member.active,
+    }
 
 # --- Ratings ---
 

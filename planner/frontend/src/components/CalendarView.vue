@@ -129,7 +129,7 @@ function ruleLabelsForDate(iso) {
       <div class="cal-controls">
         <span style="font-size: 0.78rem; color: var(--muted)">Drag range:</span>
         <select v-model="dragUserId" aria-label="Drag user">
-          <option v-for="u in household" :key="u.mealie_user_id" :value="u.mealie_user_id">
+          <option v-for="u in household.filter(m => m.active !== false)" :key="u.mealie_user_id" :value="u.mealie_user_id">
             {{ u.display_name }}
           </option>
         </select>

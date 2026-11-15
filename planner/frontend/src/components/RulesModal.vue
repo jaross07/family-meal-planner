@@ -7,12 +7,20 @@ const props = defineProps({
   currentUser: Object,
 })
 
-const emit = defineEmits(['close', 'create-rule', 'delete-rule', 'add-exception', 'update-profile'])
+const emit = defineEmits([
+  'close',
+  'create-rule',
+  'delete-rule',
+  'add-exception',
+  'update-member',
+])
 
 const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
+const activeMembers = () => (props.household || []).filter((m) => m.active !== false)
+
 const newRule = reactive({
-  mealie_user_id: props.household[0]?.mealie_user_id || '',
+  mealie_user_id: activeMembers()[0]?.mealie_user_id || '',
   weekday: 2,
   meal_type: 'dinner',
   status: 'out',
@@ -22,12 +30,7 @@ const newRule = reactive({
 })
 
 const exceptionDates = reactive({})
-const profileForm = reactive({
-  display_name: props.currentUser?.display_name || '',
-  initials: props.currentUser?.initials || '',
-  color_code: props.currentUser?.color_code || '#3B82F6',
-})
-const profileSaved = ref(false)
+const savedMemberId = ref('')
 
 function submitRule() {
   if (!newRule.label.trim()) return
@@ -38,10 +41,22 @@ function submitRule() {
   newRule.label = ''
 }
 
-function submitProfile() {
-  emit('update-profile', { ...profileForm })
-  profileSaved.value = true
-  setTimeout(() => (profileSaved.value = false), 2000)
+function saveMember(member) {
+  emit('update-member', member.mealie_user_id, {
+    display_name: member.display_name,
+    initials: member.initials,
+    color_code: member.color_code,
+    active: member.active,
+  })
+  savedMemberId.value = member.mealie_user_id
+  setTimeout(() => {
+    if (savedMemberId.value === member.mealie_user_id) savedMemberId.value = ''
+  }, 1800)
+}
+
+function toggleMemberActive(member, checked) {
+  member.active = checked
+  saveMember(member)
 }
 
 function userName(uid) {
@@ -53,19 +68,37 @@ function userName(uid) {
   <div class="modal-backdrop" @click.self="emit('close')">
     <div class="modal-box">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px">
-        <h2 style="margin: 0; font-size: 1.2rem">Recurring Rules &amp; Profile</h2>
+        <h2 style="margin: 0; font-size: 1.2rem">Configure Household &amp; Rules</h2>
         <button @click="emit('close')">Close</button>
       </div>
 
-      <!-- Profile Badge Settings -->
+      <!-- Household Visibility & Badge Configuration -->
       <div class="panel-section">
-        <h3 style="margin: 0 0 8px; font-size: 0.95rem">My Badge &amp; Color</h3>
-        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center">
-          <input v-model="profileForm.display_name" placeholder="Name" style="width: 130px" />
-          <input v-model="profileForm.initials" placeholder="Initials" maxlength="4" style="width: 75px" />
-          <input v-model="profileForm.color_code" type="color" style="width: 46px; height: 34px; padding: 2px" />
-          <button class="primary" @click="submitProfile">Save Profile</button>
-          <span v-if="profileSaved" style="color: var(--success); font-size: 0.85rem">Saved!</span>
+        <h3 style="margin: 0 0 4px; font-size: 0.95rem">Household Members on Calendar</h3>
+        <p style="margin: 0 0 10px; font-size: 0.8rem; color: var(--muted)">
+          Check who appears on the monthly calendar and counts toward meal recommendations.
+        </p>
+
+        <div
+          v-for="member in household"
+          :key="member.mealie_user_id"
+          style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px"
+        >
+          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; min-width: 90px; font-size: 0.85rem; font-weight: 600">
+            <input
+              type="checkbox"
+              :checked="member.active !== false"
+              @change="toggleMemberActive(member, $event.target.checked)"
+            />
+            Show
+          </label>
+          <input v-model="member.display_name" placeholder="Name" style="width: 135px" />
+          <input v-model="member.initials" placeholder="Initials" maxlength="4" style="width: 68px" />
+          <input v-model="member.color_code" type="color" style="width: 44px; height: 34px; padding: 2px" />
+          <button @click="saveMember(member)">Save</button>
+          <span v-if="savedMemberId === member.mealie_user_id" style="color: var(--success); font-size: 0.8rem">
+            Saved!
+          </span>
         </div>
       </div>
 
@@ -74,7 +107,7 @@ function userName(uid) {
         <h3 style="margin: 0 0 8px; font-size: 0.95rem">Add Recurring Schedule Rule</h3>
         <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center">
           <select v-model="newRule.mealie_user_id">
-            <option v-for="u in household" :key="u.mealie_user_id" :value="u.mealie_user_id">
+            <option v-for="u in activeMembers()" :key="u.mealie_user_id" :value="u.mealie_user_id">
               {{ u.display_name }}
             </option>
           </select>

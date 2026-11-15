@@ -6,8 +6,8 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
-    String,
     JSON,
+    String,
     UniqueConstraint,
     func,
 )
@@ -74,6 +74,7 @@ class UserProfile(Base):
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
     initials: Mapped[str] = mapped_column(String(4), nullable=False)
     color_code: Mapped[str] = mapped_column(String(7), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     __table_args__ = (
         CheckConstraint("LENGTH(color_code) = 7 AND color_code LIKE '#%'", name="ck_user_profile_color_hex"),

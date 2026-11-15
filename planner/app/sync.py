@@ -5,17 +5,11 @@ from app.auth import ensure_user_profile
 from app.mealie_client import fetch_household_users, mealie_client
 from app.models import RecipeCache, RecipeMeta
 
-EXCLUDED_USERNAMES = {"planner-bot", "luckycap33"}
-
 
 async def sync_recipes_from_mealie(db: Session) -> dict:
     """Refresh recipe_cache, seed recipe_meta, and sync household user profiles from Mealie."""
-    # 1. Ensure household members (Justin, Jenesa, Henley) appear on the calendar immediately
     household_users = await fetch_household_users()
     for member in household_users:
-        uname = member["username"].strip().lower()
-        if uname in EXCLUDED_USERNAMES:
-            continue
         ensure_user_profile(
             db=db,
             user_id=member["user_id"],
@@ -23,7 +17,6 @@ async def sync_recipes_from_mealie(db: Session) -> dict:
             full_name=member["full_name"],
         )
 
-    # 2. Sync recipes
     fetched = await mealie_client.fetch_all_recipes()
     now = datetime.now(timezone.utc)
     seen_ids: set[str] = set()
