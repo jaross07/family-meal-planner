@@ -289,6 +289,50 @@ def update_household_member(
         "active": member.active,
     }
 
+# --- Hidden Recipes ---
+
+class RecipeHiddenUpdate(BaseModel):
+    hidden: bool
+
+
+@app.get("/api/recipes/hidden")
+def list_hidden_recipes(
+    _: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.query(RecipeCache)
+        .filter(RecipeCache.active.is_(True), RecipeCache.hidden.is_(True))
+        .order_by(RecipeCache.name)
+        .all()
+    )
+    return {
+        "items": [
+            {"mealie_recipe_id": r.mealie_recipe_id, "slug": r.slug, "name": r.name}
+            for r in rows
+        ]
+    }
+
+
+@app.put("/api/recipes/{recipe_id}/hidden")
+def set_recipe_hidden(
+    recipe_id: str,
+    payload: RecipeHiddenUpdate,
+    _: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    recipe = db.get(RecipeCache, recipe_id)
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    recipe.hidden = payload.hidden
+    db.commit()
+    return {
+        "mealie_recipe_id": recipe.mealie_recipe_id,
+        "name": recipe.name,
+        "hidden": recipe.hidden,
+    }
+
+
 # --- Ratings ---
 
 @app.get("/api/ratings/{recipe_id}")
