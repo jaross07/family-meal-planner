@@ -522,7 +522,6 @@ onMounted(async () => {
       :my-ratings="myRatings"
         :family-notes="familyNotes"
       :my-notes="myNotes"
-      :family-notes="familyNotes"
       :mealie-public-url="mealiePublicUrl"
       @update:meal-type="henleyMealFilter = $event"
       @update:view-mode="async (m) => { viewMode = m; await handleUpdatePreferences({ calendar_view: m }) }"
