@@ -30,6 +30,9 @@ const dragStatus = ref('away')
 const dragMealScope = ref('all')
 const dragStart = ref(null)
 const dragEnd = ref(null)
+const isDragging = ref(false)
+const selectionAnchor = ref(null)
+const selectedBulkDates = ref(new Set())
 const rangeFrom = ref('')
 const rangeTo = ref('')
 
@@ -141,12 +144,37 @@ function isDayMealPlanned(iso) {
   return props.mealType === 'dinner'
 }
 
-function isInDragRange(iso) {
-  if (!dragStart.value || !dragEnd.value) return false
-  const [a, b] = dragStart.value <= dragEnd.value
-    ? [dragStart.value, dragEnd.value]
-    : [dragEnd.value, dragStart.value]
-  return iso >= a && iso <= b
+function expandIsoRange(startIso, endIso) {
+  const [s, e] = startIso <= endIso ? [startIso, endIso] : [endIso, startIso]
+  const out = []
+  let cur = parseIso(s)
+  const last = parseIso(e)
+  while (cur <= last && out.length < 62) {
+    out.push(toIso(cur))
+    cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 1)
+  }
+  return out
+}
+
+function syncInputsFromSet(dateSet) {
+  const sorted = Array.from(dateSet).sort()
+  if (sorted.length > 0) {
+    rangeFrom.value = sorted[0]
+    rangeTo.value = sorted[sorted.length - 1]
+  } else {
+    rangeFrom.value = ''
+    rangeTo.value = ''
+  }
+}
+
+function isCellHighlighted(iso) {
+  if (isDragging.value && dragStart.value && dragEnd.value) {
+    const [a, b] = dragStart.value <= dragEnd.value
+      ? [dragStart.value, dragEnd.value]
+      : [dragEnd.value, dragStart.value]
+    if (iso >= a && iso <= b) return true
+  }
+  return selectedBulkDates.value.has(iso)
 }
 
 function onCellPointerDown(iso, e) {
@@ -154,8 +182,38 @@ function onCellPointerDown(iso, e) {
   if (e.target && e.target.closest('button, select, input, a')) return
   e.preventDefault()
   emit('select-date', iso)
+
+  const isCtrl = e.ctrlKey || e.metaKey
+  const isShift = e.shiftKey
+
+  if (isShift && selectionAnchor.value) {
+    const next = new Set(isCtrl ? selectedBulkDates.value : [])
+    for (const d of expandIsoRange(selectionAnchor.value, iso)) {
+      next.add(d)
+    }
+    selectedBulkDates.value = next
+    syncInputsFromSet(next)
+    return
+  }
+
+  if (isCtrl) {
+    const next = new Set(selectedBulkDates.value)
+    if (next.has(iso)) {
+      next.delete(iso)
+    } else {
+      next.add(iso)
+    }
+    selectedBulkDates.value = next
+    selectionAnchor.value = iso
+    syncInputsFromSet(next)
+    return
+  }
+
+  // Plain click or start of drag
+  selectionAnchor.value = iso
   dragStart.value = iso
   dragEnd.value = iso
+  isDragging.value = false
   window.addEventListener('pointermove', onWindowPointerMove)
   window.addEventListener('pointerup', onPointerUp)
 }
@@ -163,6 +221,7 @@ function onCellPointerDown(iso, e) {
 function onCellPointerEnter(iso) {
   if (dragStart.value) {
     dragEnd.value = iso
+    if (iso !== dragStart.value) isDragging.value = true
   }
 }
 
@@ -172,10 +231,17 @@ function onWindowPointerMove(e) {
   const cell = el?.closest?.('[data-date]')
   if (cell?.dataset?.date) {
     dragEnd.value = cell.dataset.date
+    if (cell.dataset.date !== dragStart.value) isDragging.value = true
   }
 }
 
-function applyRange(start, end) {
+function clearBulkSelection() {
+  selectedBulkDates.value = new Set()
+  rangeFrom.value = ''
+  rangeTo.value = ''
+}
+
+function applyBulkSelection() {
   const userIds =
     dragTargetUser.value === 'ALL'
       ? activeHousehold.value.map((m) => m.mealie_user_id)
@@ -184,8 +250,27 @@ function applyRange(start, end) {
     dragMealScope.value === 'all'
       ? ['breakfast', 'lunch', 'dinner']
       : [props.mealType]
-  if (userIds.length && start && end) {
-    const [s, e] = start <= end ? [start, end] : [end, start]
+  if (!userIds.length) return
+
+  // If multiple non-contiguous dates were Ctrl+clicked, send explicit dates list; otherwise use date range
+  if (selectedBulkDates.value.size > 1) {
+    const sorted = Array.from(selectedBulkDates.value).sort()
+    emit('range-set', {
+      dates: sorted,
+      start_date: sorted[0],
+      end_date: sorted[sorted.length - 1],
+      meal_types: mealTypes,
+      user_ids: userIds,
+      status: dragStatus.value,
+    })
+    clearBulkSelection()
+    return
+  }
+
+  if (rangeFrom.value && rangeTo.value) {
+    const [s, e] = rangeFrom.value <= rangeTo.value
+      ? [rangeFrom.value, rangeTo.value]
+      : [rangeTo.value, rangeFrom.value]
     emit('range-set', {
       start_date: s,
       end_date: e,
@@ -193,6 +278,7 @@ function applyRange(start, end) {
       user_ids: userIds,
       status: dragStatus.value,
     })
+    clearBulkSelection()
   }
 }
 
@@ -200,19 +286,20 @@ function onPointerUp() {
   window.removeEventListener('pointermove', onWindowPointerMove)
   window.removeEventListener('pointerup', onPointerUp)
   if (dragStart.value && dragEnd.value) {
-    if (dragStart.value !== dragEnd.value) {
-      rangeFrom.value = dragStart.value <= dragEnd.value ? dragStart.value : dragEnd.value
-      rangeTo.value = dragStart.value <= dragEnd.value ? dragEnd.value : dragStart.value
-      applyRange(dragStart.value, dragEnd.value)
-    } else if (!rangeFrom.value || (rangeFrom.value && rangeTo.value)) {
-      rangeFrom.value = dragStart.value
-      rangeTo.value = ''
+    if (isDragging.value && dragStart.value !== dragEnd.value) {
+      const next = new Set(expandIsoRange(dragStart.value, dragEnd.value))
+      selectedBulkDates.value = next
+      syncInputsFromSet(next)
     } else {
-      rangeTo.value = dragStart.value
+      // Single plain click selects just that day as anchor
+      const next = new Set([dragStart.value])
+      selectedBulkDates.value = next
+      syncInputsFromSet(next)
     }
   }
   dragStart.value = null
   dragEnd.value = null
+  isDragging.value = false
 }
 
 onUnmounted(() => {
@@ -266,15 +353,23 @@ function badgeStyle(entry) {
           <option value="all">All Meals</option>
           <option value="current">This Meal</option>
         </select>
-        <input v-model="rangeFrom" type="date" aria-label="Start date" style="padding: 4px 6px; font-size: 0.78rem" />
-        <input v-model="rangeTo" type="date" aria-label="End date" style="padding: 4px 6px; font-size: 0.78rem" />
-        <button :disabled="!rangeFrom || !rangeTo" @click="applyRange(rangeFrom, rangeTo)">Apply</button>
+        <template v-if="selectedBulkDates.size > 1">
+          <span style="font-size: 0.78rem; font-weight: 600; color: #1d4ed8; background: #dbeafe; padding: 3px 8px; border-radius: 6px">
+            {{ selectedBulkDates.size }} days selected
+          </span>
+        </template>
+        <template v-else>
+          <input v-model="rangeFrom" type="date" aria-label="Start date" style="padding: 4px 6px; font-size: 0.78rem" />
+          <input v-model="rangeTo" type="date" aria-label="End date" style="padding: 4px 6px; font-size: 0.78rem" />
+        </template>
+        <button class="primary" :disabled="selectedBulkDates.size === 0 && (!rangeFrom || !rangeTo)" @click="applyBulkSelection">Apply</button>
+        <button v-if="selectedBulkDates.size > 1" @click="clearBulkSelection">Clear</button>
         <button :disabled="!undoAvailable" @click="emit('undo')">Undo</button>
       </div>
     </div>
 
     <div style="font-size: 0.75rem; color: var(--muted); margin-bottom: 8px">
-      Tip: Click and drag across days (or use the date boxes above) to bulk-update; double-click a day to edit all meals.
+      Tip: Drag across days, Shift+Click a range, or Ctrl/Cmd+Click multiple days, then click Apply; double-click a day to edit all meals.
     </div>
 
     <div class="cal-grid" style="touch-action: none; user-select: none; -webkit-user-select: none">
@@ -290,7 +385,7 @@ function badgeStyle(entry) {
         :class="{
           outside: !cell.inMonth,
           selected: cell.iso === selectedDate,
-          'drag-highlight': isInDragRange(cell.iso),
+          'drag-highlight': isCellHighlighted(cell.iso),
         }"
         :style="{ minHeight: viewMode === 'month' ? '92px' : '136px' }"
         @pointerdown="onCellPointerDown(cell.iso, $event)"

@@ -370,7 +370,7 @@ def get_attendance(
 @app.put("/api/attendance")
 def put_attendance(
     payload: AttendancePutRequest,
-    session: dict = Depends(get_current_session),
+    user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
     end = payload.end_date or payload.start_date
@@ -380,7 +380,7 @@ def put_attendance(
         raise HTTPException(status_code=400, detail="Range cannot exceed 62 days")
 
     # Tag batch_id with acting user's ID so undo reverts only the current user's last batch
-    batch_id = f"{session['user_id']}:{uuid.uuid4().hex}"
+    batch_id = f"{user_id}:{uuid.uuid4().hex}"
     current = payload.start_date
     updated = 0
 

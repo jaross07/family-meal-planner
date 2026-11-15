@@ -186,21 +186,52 @@ async function handleToggleBadge(entry) {
 }
 
 async function handleRangeSet(payload) {
-  for (const uid of payload.user_ids) {
-    await apiFetch('/api/attendance', {
-      method: 'PUT',
-      body: JSON.stringify({
-        start_date: payload.start_date,
-        end_date: payload.end_date,
-        meal_types: payload.meal_types,
-        mealie_user_id: uid,
-        status: payload.status,
-      }),
-    })
+  try {
+    const ranges = []
+    if (Array.isArray(payload.dates) && payload.dates.length > 0) {
+      // Group consecutive dates into minimal ranges so Undo reverts the whole batch cleanly
+      const sorted = [...payload.dates].sort()
+      let rStart = sorted[0]
+      let rPrev = sorted[0]
+      for (let i = 1; i < sorted.length; i++) {
+        const prevD = parseIso(rPrev)
+        prevD.setDate(prevD.getDate() + 1)
+        if (toIso(prevD) === sorted[i]) {
+          rPrev = sorted[i]
+        } else {
+          ranges.push([rStart, rPrev])
+          rStart = sorted[i]
+          rPrev = sorted[i]
+        }
+      }
+      ranges.push([rStart, rPrev])
+    } else {
+      ranges.push([payload.start_date, payload.end_date])
+    }
+
+    for (const uid of payload.user_ids) {
+      for (const [sDate, eDate] of ranges) {
+        await apiFetch('/api/attendance', {
+          method: 'PUT',
+          body: JSON.stringify({
+            start_date: sDate,
+            end_date: eDate,
+            meal_types: payload.meal_types,
+            mealie_user_id: uid,
+            status: payload.status,
+          }),
+        })
+      }
+    }
+    const label = Array.isArray(payload.dates) && payload.dates.length > 1
+      ? `Updated ${payload.dates.length} selected days`
+      : `Updated ${payload.start_date} to ${payload.end_date}`
+    notify(label)
+    await loadVisibleRangeData()
+    await loadDayDetails()
+  } catch (err) {
+    notify(`Bulk update failed: ${err.message}`)
   }
-  notify(`Updated ${payload.start_date} to ${payload.end_date}`)
-  await loadVisibleRangeData()
-  await loadDayDetails()
 }
 
 async function handleUndo() {
