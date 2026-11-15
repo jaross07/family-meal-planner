@@ -28,8 +28,6 @@ class RecipeCache(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    week_start_day: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    calendar_view: Mapped[str] = mapped_column(String(16), default="month", nullable=False)
 
 
 class RecipeMeta(Base):
