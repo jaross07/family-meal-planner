@@ -5,6 +5,7 @@ import CalendarView from './components/CalendarView.vue'
 import DayMealsModal from './components/DayMealsModal.vue'
 import DayPanel from './components/DayPanel.vue'
 import RulesModal from './components/RulesModal.vue'
+import WeekPlanModal from './components/WeekPlanModal.vue'
 
 const authenticated = ref(false)
 const checkingSession = ref(true)
@@ -45,6 +46,7 @@ const loadingRecs = ref(false)
 const planningRecipeId = ref(null)
 const syncing = ref(false)
 const showRulesModal = ref(false)
+const showWeekModal = ref(false)
 const dayModalDate = ref(null)
 
 const mealiePublicUrl = `${window.location.protocol}//${window.location.hostname}`
@@ -412,6 +414,7 @@ onMounted(async () => {
         <button :disabled="syncing" @click="handleSyncNow">
           {{ syncing ? 'Syncing...' : 'Sync Recipes' }}
         </button>
+        <button class="primary" @click="showWeekModal = true">Plan Week</button>
         <button @click="showRulesModal = true">Configure</button>
         <button @click="handleLogout">Sign Out</button>
       </div>
@@ -463,6 +466,16 @@ onMounted(async () => {
       @close="dayModalDate = null"
       @toggle-meal-planned="handleModalToggleMealPlanned"
       @toggle-user-attending="handleModalToggleUserAttending"
+    />
+
+
+    <WeekPlanModal
+      v-if="showWeekModal"
+      :anchor-date="selectedDate"
+      :week-start-day="weekStartDay"
+      :meal-type="mealType"
+      @close="showWeekModal = false"
+      @planned="(n) => notify(`Added ${n} meal(s) to Mealie's weekly plan!`)"
     />
 
     <RulesModal
