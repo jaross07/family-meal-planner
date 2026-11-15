@@ -746,6 +746,45 @@ class BatchPlanRequest(BaseModel):
     items: list[BatchPlanItem]
 
 
+class RecipeMetaUpdateRequest(BaseModel):
+    leftover_yield: bool
+    prep_time_minutes: int | None = Field(default=None, ge=1, le=480)
+    leftover_type: str | None = Field(default=None, max_length=100)
+
+
+@app.put("/api/recipes/{recipe_id}/meta")
+def update_recipe_meta(
+    recipe_id: str,
+    payload: RecipeMetaUpdateRequest,
+    _: dict = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    """Toggle Make Extra (leftover_yield) or prep metadata directly from the Planner UI."""
+    meta = db.get(RecipeMeta, recipe_id)
+    if meta is None:
+        meta = RecipeMeta(
+            mealie_recipe_id=recipe_id,
+            leftover_yield=payload.leftover_yield,
+            prep_time_minutes=payload.prep_time_minutes,
+            leftover_type=payload.leftover_type,
+        )
+        db.add(meta)
+    else:
+        meta.leftover_yield = payload.leftover_yield
+        if payload.prep_time_minutes is not None:
+            meta.prep_time_minutes = payload.prep_time_minutes
+        if payload.leftover_type is not None:
+            meta.leftover_type = payload.leftover_type
+
+    db.commit()
+    return {
+        "mealie_recipe_id": recipe_id,
+        "leftover_yield": meta.leftover_yield,
+        "prep_time_minutes": meta.prep_time_minutes,
+        "leftover_type": meta.leftover_type,
+    }
+
+
 @app.get("/api/recipes/{recipe_id}/image")
 async def get_recipe_thumbnail(
     recipe_id: str,

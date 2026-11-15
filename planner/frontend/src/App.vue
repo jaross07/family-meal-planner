@@ -262,6 +262,21 @@ async function handleModalToggleUserAttending(mtype, userId, attending) {
   }
 }
 
+async function handleToggleRecipeLeftover(item) {
+  await apiFetch(`/api/recipes/${item.mealie_recipe_id}/meta`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      leftover_yield: !item.leftover_yield,
+    }),
+  })
+  notify(
+    !item.leftover_yield
+      ? `Marked "${item.name}" as Makes Extra`
+      : `Removed Makes Extra from "${item.name}"`
+  )
+  await loadDayDetails()
+}
+
 async function handleRateRecipe(recipeId, score) {
   await apiFetch(`/api/ratings/${recipeId}`, {
     method: 'PUT',
@@ -482,6 +497,7 @@ onMounted(async () => {
         :planning-recipe-id="planningRecipeId"
         @update-context="handleUpdateContext"
         @rate-recipe="handleRateRecipe"
+        @toggle-recipe-leftover="handleToggleRecipeLeftover"
         @plan-recipe="handlePlanRecipe"
         @remove-planned="handleRemovePlanned"
         @replace-planned="handleReplacePlanned"

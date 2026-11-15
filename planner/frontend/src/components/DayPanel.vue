@@ -22,6 +22,7 @@ const emit = defineEmits([
   'replace-planned',
   'show-vetoed',
   'open-day-modal',
+  'toggle-recipe-leftover',
 ])
 
 const replacingEntry = ref(null)
@@ -86,7 +87,8 @@ function chooseRecipe(item) {
     <div class="panel-section">
       <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
         <h2 style="margin: 0 0 4px; font-size: 1.1rem">{{ formattedDate }}</h2>
-        <button @click="emit('open-day-modal', selectedDate)">Edit Day Meals</button>
+        <button @click="emit('open-day-modal',
+  'toggle-recipe-leftover', selectedDate)">Edit Day Meals</button>
       </div>
       <div style="font-size: 0.85rem; color: var(--muted); text-transform: capitalize">
         {{ mealType }} &bull;
@@ -212,7 +214,15 @@ function chooseRecipe(item) {
             <div class="recipe-meta">
               <span>Score: {{ item.score }}</span>
               <span v-if="item.prep_time_minutes">⏱ {{ item.prep_time_minutes }}m</span>
-              <span v-if="item.leftover_yield">🍱 High-yield</span>
+              <button
+                type="button"
+                style="padding: 1px 7px; font-size: 0.72rem; border-radius: 999px"
+                :style="item.leftover_yield ? { background: '#dcfce7', borderColor: '#16a34a', color: '#166534', fontWeight: '600' } : {}"
+                title="Toggle whether this recipe makes leftovers for Make Extra days"
+                @click="emit('toggle-recipe-leftover', item)"
+              >
+                🍱 {{ item.leftover_yield ? 'Makes Extra ✓' : 'Mark Makes Extra' }}
+              </button>
               <span v-if="item.last_planned_date">Last: {{ item.last_planned_date }}</span>
             </div>
             <div v-if="item.leftover_badge" class="leftover-pill" style="margin-bottom: 0">
