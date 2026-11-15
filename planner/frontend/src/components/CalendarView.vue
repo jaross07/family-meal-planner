@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 
 const props = defineProps({
   anchorDate: String,
@@ -27,6 +27,7 @@ const emit = defineEmits([
 
 const dragTargetUser = ref('ALL')
 const dragStatus = ref('away')
+const dragMealScope = ref('all')
 const dragStart = ref(null)
 const dragEnd = ref(null)
 const rangeFrom = ref('')
@@ -149,10 +150,14 @@ function isInDragRange(iso) {
 }
 
 function onCellPointerDown(iso, e) {
-  if (e.button !== 0) return
+  if (e.button !== undefined && e.button !== 0) return
+  if (e.target && e.target.closest('button, select, input, a')) return
+  e.preventDefault()
   emit('select-date', iso)
   dragStart.value = iso
   dragEnd.value = iso
+  window.addEventListener('pointermove', onWindowPointerMove)
+  window.addEventListener('pointerup', onPointerUp)
 }
 
 function onCellPointerEnter(iso) {
@@ -161,17 +166,30 @@ function onCellPointerEnter(iso) {
   }
 }
 
+function onWindowPointerMove(e) {
+  if (!dragStart.value) return
+  const el = document.elementFromPoint(e.clientX, e.clientY)
+  const cell = el?.closest?.('[data-date]')
+  if (cell?.dataset?.date) {
+    dragEnd.value = cell.dataset.date
+  }
+}
+
 function applyRange(start, end) {
   const userIds =
     dragTargetUser.value === 'ALL'
       ? activeHousehold.value.map((m) => m.mealie_user_id)
       : [dragTargetUser.value]
+  const mealTypes =
+    dragMealScope.value === 'all'
+      ? ['breakfast', 'lunch', 'dinner']
+      : [props.mealType]
   if (userIds.length && start && end) {
     const [s, e] = start <= end ? [start, end] : [end, start]
     emit('range-set', {
       start_date: s,
       end_date: e,
-      meal_types: [props.mealType],
+      meal_types: mealTypes,
       user_ids: userIds,
       status: dragStatus.value,
     })
@@ -179,14 +197,28 @@ function applyRange(start, end) {
 }
 
 function onPointerUp() {
-  if (dragStart.value && dragEnd.value && dragStart.value !== dragEnd.value) {
-    rangeFrom.value = dragStart.value <= dragEnd.value ? dragStart.value : dragEnd.value
-    rangeTo.value = dragStart.value <= dragEnd.value ? dragEnd.value : dragStart.value
-    applyRange(dragStart.value, dragEnd.value)
+  window.removeEventListener('pointermove', onWindowPointerMove)
+  window.removeEventListener('pointerup', onPointerUp)
+  if (dragStart.value && dragEnd.value) {
+    if (dragStart.value !== dragEnd.value) {
+      rangeFrom.value = dragStart.value <= dragEnd.value ? dragStart.value : dragEnd.value
+      rangeTo.value = dragStart.value <= dragEnd.value ? dragEnd.value : dragStart.value
+      applyRange(dragStart.value, dragEnd.value)
+    } else if (!rangeFrom.value || (rangeFrom.value && rangeTo.value)) {
+      rangeFrom.value = dragStart.value
+      rangeTo.value = ''
+    } else {
+      rangeTo.value = dragStart.value
+    }
   }
   dragStart.value = null
   dragEnd.value = null
 }
+
+onUnmounted(() => {
+  window.removeEventListener('pointermove', onWindowPointerMove)
+  window.removeEventListener('pointerup', onPointerUp)
+})
 
 function badgeStyle(entry) {
   if (entry.status === 'home') {
@@ -197,7 +229,7 @@ function badgeStyle(entry) {
 </script>
 
 <template>
-  <div class="card" @pointerup="onPointerUp" @pointerleave="onPointerUp">
+  <div class="card">
     <div class="cal-header">
       <div class="cal-controls">
         <button @click="emit('navigate', -1)">&larr;</button>
@@ -230,6 +262,10 @@ function badgeStyle(entry) {
           <option value="out">Out</option>
           <option value="home">Home</option>
         </select>
+        <select v-model="dragMealScope" aria-label="Meals to update">
+          <option value="all">All Meals</option>
+          <option value="current">This Meal</option>
+        </select>
         <input v-model="rangeFrom" type="date" aria-label="Start date" style="padding: 4px 6px; font-size: 0.78rem" />
         <input v-model="rangeTo" type="date" aria-label="End date" style="padding: 4px 6px; font-size: 0.78rem" />
         <button :disabled="!rangeFrom || !rangeTo" @click="applyRange(rangeFrom, rangeTo)">Apply</button>
@@ -241,7 +277,7 @@ function badgeStyle(entry) {
       Tip: Click and drag across days (or use the date boxes above) to bulk-update; double-click a day to edit all meals.
     </div>
 
-    <div class="cal-grid" style="touch-action: none">
+    <div class="cal-grid" style="touch-action: none; user-select: none; -webkit-user-select: none">
       <div v-for="dow in dowHeaders" :key="dow" class="cal-dow">
         {{ dow }}
       </div>
@@ -249,6 +285,7 @@ function badgeStyle(entry) {
       <div
         v-for="cell in calendarDays"
         :key="cell.iso"
+        :data-date="cell.iso"
         class="cal-cell"
         :class="{
           outside: !cell.inMonth,
