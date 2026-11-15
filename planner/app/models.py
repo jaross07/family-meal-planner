@@ -62,6 +62,8 @@ class MealContext(Base):
     require_leftovers: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     max_prep_time: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_planned: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    eating_leftovers: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    henleys_choice: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     __table_args__ = (
         UniqueConstraint("date", "meal_type", name="uq_meal_context_date_type"),

@@ -148,7 +148,7 @@ onMounted(loadPreview)
               <span>{{ formatDay(day.date) }}</span>
             </label>
             <div style="font-size: 0.76rem; color: var(--muted); margin-left: 24px">
-              <span v-if="!day.is_planned">Meal skipped</span>
+              <span v-if="day.reason === 'eating_leftovers'">♻ Eating leftovers</span><span v-else-if="!day.is_planned">Meal skipped</span>
               <span v-else-if="day.diners?.length">
                 Diners: {{ day.diners.map((d) => d.display_name).join(', ') }}
               </span>
@@ -175,7 +175,7 @@ onMounted(loadPreview)
               </option>
             </select>
             <span v-else style="font-size: 0.82rem; color: var(--muted)">
-              {{ day.is_planned ? 'No matching recipes available' : 'Not planning this meal' }}
+              {{ day.reason === 'eating_leftovers' ? '♻ Eating leftovers (no new recipe needed)' : day.is_planned ? 'No matching recipes available' : 'Not planning this meal' }}
             </span>
           </div>
         </div>

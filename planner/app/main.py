@@ -124,6 +124,8 @@ class ContextUpdateRequest(BaseModel):
     require_leftovers: bool = False
     max_prep_time: int | None = Field(default=None, ge=5, le=480)
     is_planned: bool = True
+    eating_leftovers: bool = False
+    henleys_choice: bool = False
 
 
 class RecipeMetaUpdateRequest(BaseModel):
@@ -549,6 +551,8 @@ def get_meal_contexts_range(
             "require_leftovers": r.require_leftovers,
             "max_prep_time": r.max_prep_time,
             "is_planned": r.is_planned,
+            "eating_leftovers": r.eating_leftovers,
+            "henleys_choice": r.henleys_choice,
         }
         for r in rows
     ]
@@ -573,6 +577,8 @@ def get_meal_context(
         "require_leftovers": ctx.require_leftovers if ctx else False,
         "max_prep_time": ctx.max_prep_time if ctx else None,
         "is_planned": ctx.is_planned if ctx else default_planned,
+        "eating_leftovers": ctx.eating_leftovers if ctx else False,
+        "henleys_choice": ctx.henleys_choice if ctx else False,
     }
 
 
@@ -594,12 +600,16 @@ def put_meal_context(
             require_leftovers=payload.require_leftovers,
             max_prep_time=payload.max_prep_time,
             is_planned=payload.is_planned,
+            eating_leftovers=payload.eating_leftovers,
+            henleys_choice=payload.henleys_choice,
         )
         db.add(ctx)
     else:
         ctx.require_leftovers = payload.require_leftovers
         ctx.max_prep_time = payload.max_prep_time
         ctx.is_planned = payload.is_planned
+        ctx.eating_leftovers = payload.eating_leftovers
+        ctx.henleys_choice = payload.henleys_choice
 
     db.commit()
     return {
@@ -608,6 +618,8 @@ def put_meal_context(
         "require_leftovers": ctx.require_leftovers,
         "max_prep_time": ctx.max_prep_time,
         "is_planned": ctx.is_planned,
+        "eating_leftovers": ctx.eating_leftovers,
+        "henleys_choice": ctx.henleys_choice,
     }
 
 
@@ -873,11 +885,12 @@ async def preview_week_plan(
         default_planned = (meal_type == "dinner")
         is_planned = ctx.is_planned if ctx else default_planned
 
-        if not is_planned:
+        eating_leftovers = ctx.eating_leftovers if ctx else False
+        if not is_planned or eating_leftovers:
             days_out.append({
                 "date": day.isoformat(),
                 "is_planned": False,
-                "reason": "not_planned",
+                "reason": "eating_leftovers" if eating_leftovers else "not_planned",
                 "diners": [],
                 "selected_recipe_id": None,
                 "candidates": [],

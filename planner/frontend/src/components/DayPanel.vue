@@ -50,6 +50,8 @@ function toggleFastEasy() {
     require_leftovers: Boolean(props.context?.require_leftovers),
     max_prep_time: nextPrep,
     is_planned: props.context?.is_planned ?? (props.mealType === 'dinner'),
+    eating_leftovers: Boolean(props.context?.eating_leftovers),
+    henleys_choice: Boolean(props.context?.henleys_choice),
   })
 }
 
@@ -60,6 +62,32 @@ function toggleMakeExtra() {
     require_leftovers: !props.context?.require_leftovers,
     max_prep_time: props.context?.max_prep_time ?? null,
     is_planned: props.context?.is_planned ?? (props.mealType === 'dinner'),
+    eating_leftovers: Boolean(props.context?.eating_leftovers),
+    henleys_choice: Boolean(props.context?.henleys_choice),
+  })
+}
+
+function toggleEatingLeftovers() {
+  emit('update-context', {
+    date: props.selectedDate,
+    meal_type: props.mealType,
+    require_leftovers: Boolean(props.context?.require_leftovers),
+    max_prep_time: props.context?.max_prep_time ?? null,
+    is_planned: props.context?.is_planned ?? (props.mealType === 'dinner'),
+    eating_leftovers: !props.context?.eating_leftovers,
+    henleys_choice: Boolean(props.context?.henleys_choice),
+  })
+}
+
+function toggleHenleysChoice() {
+  emit('update-context', {
+    date: props.selectedDate,
+    meal_type: props.mealType,
+    require_leftovers: Boolean(props.context?.require_leftovers),
+    max_prep_time: props.context?.max_prep_time ?? null,
+    is_planned: props.context?.is_planned ?? (props.mealType === 'dinner'),
+    eating_leftovers: Boolean(props.context?.eating_leftovers),
+    henleys_choice: !props.context?.henleys_choice,
   })
 }
 
@@ -124,6 +152,20 @@ function chooseRecipe(item) {
         >
           🍱 Make Extra
         </button>
+        <button
+          class="toggle-chip"
+          :class="{ active: Boolean(context?.eating_leftovers) }"
+          @click="toggleEatingLeftovers"
+        >
+          ♻ Eating Leftovers
+        </button>
+        <button
+          class="toggle-chip"
+          :class="{ active: Boolean(context?.henleys_choice) }"
+          @click="toggleHenleysChoice"
+        >
+          👑 Henley's Choice
+        </button>
       </div>
     </div>
 
@@ -179,6 +221,13 @@ function chooseRecipe(item) {
     </div>
 
     <div v-if="loading" style="color: var(--muted); padding: 12px 0">Loading recommendations...</div>
+
+    <div
+      v-else-if="context?.eating_leftovers"
+      style="background: #f0fdf4; border: 1px solid #86efac; color: #166534; border-radius: 8px; padding: 12px; margin-bottom: 10px"
+    >
+      <strong>♻ Eating Leftovers</strong> — No new recipe required for this meal. Toggle off <em>Eating Leftovers</em> above if you want fresh recipe suggestions.
+    </div>
 
     <div v-else-if="context && context.is_planned === false" style="color: var(--muted); padding: 12px 0">
       This meal is marked as not planned. Double-click the day or click <strong>Edit Day Meals</strong> to enable it.

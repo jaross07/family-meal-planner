@@ -271,6 +271,8 @@ function badgeStyle(entry) {
             <span v-if="!isDayMealPlanned(cell.iso)" title="Meal not planned">🚫</span>
             <span v-if="contexts[`${cell.iso}:${mealType}`]?.max_prep_time" title="Fast & Easy">⚡</span>
             <span v-if="contexts[`${cell.iso}:${mealType}`]?.require_leftovers" title="Make Extra">🍱</span>
+            <span v-if="contexts[`${cell.iso}:${mealType}`]?.eating_leftovers" title="Eating Leftovers">♻</span>
+            <span v-if="contexts[`${cell.iso}:${mealType}`]?.henleys_choice" title="Henley's Choice">👑</span>
           </span>
         </div>
 

@@ -52,6 +52,12 @@ async def generate_recommendations(
     )
     require_leftovers = context.require_leftovers if context else False
     max_prep_time = context.max_prep_time if context else None
+    henleys_choice = getattr(context, "henleys_choice", False) if context else False
+    henley_ids = {
+        d["mealie_user_id"]
+        for d in diners
+        if "henley" in d.get("display_name", "").strip().lower()
+    }
 
     # Load active recipes and their metadata
     active_recipes = db.query(RecipeCache).filter(RecipeCache.active.is_(True)).all()
@@ -163,7 +169,8 @@ async def generate_recommendations(
         # 4. Base score (diners' average rating) + Leftover Chain boost
         avg_score = sum(diner_scores) / len(diner_ids)
         leftover_badge = leftover_boost_reasons.get(rid)
-        final_score = avg_score + (LEFTOVER_CHAIN_BOOST if leftover_badge else 0.0)
+        henley_bonus = 1.5 if (henleys_choice and any(user_scores.get(hid, 0) == 1 for hid in henley_ids)) else 0.0
+        final_score = avg_score + (LEFTOVER_CHAIN_BOOST if leftover_badge else 0.0) + henley_bonus
 
         last_planned = last_planned_map.get(rid)
         # Sort key: highest final_score first, then least-recently planned first (None = never planned -> oldest)
