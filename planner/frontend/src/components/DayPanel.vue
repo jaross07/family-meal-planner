@@ -8,6 +8,7 @@ const props = defineProps({
   plannedMeals: Array,
   dayAttendance: Array,
   myRatings: Object,
+  familyNotes: Object,
   context: Object,
   mealiePublicUrl: String,
   loading: Boolean,
@@ -281,8 +282,15 @@ function chooseRecipe(item) {
               </button>
               <span v-if="item.last_planned_date">Last: {{ item.last_planned_date }}</span>
             </div>
-            <div v-if="item.leftover_badge" class="leftover-pill" style="margin-bottom: 0">
+            <div v-if="item.leftover_badge" class="leftover-pill" style="margin-bottom: 4px">
               ♻ {{ item.leftover_badge }}
+            </div>
+            <div
+              v-for="fn in familyNotes?.[item.mealie_recipe_id] || []"
+              :key="fn.user_id"
+              style="font-size: 0.76rem; color: #475569; background: #f8fafc; border-left: 3px solid #94a3b8; padding: 2px 6px; margin-top: 3px; border-radius: 0 4px 4px 0"
+            >
+              <strong>{{ fn.display_name }}:</strong> "{{ fn.note }}"
             </div>
           </div>
         </div>

@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from sqlalchemy import (
+from sqlalchemy import Text, (
     Boolean,
     CheckConstraint,
     Date,
@@ -80,6 +80,7 @@ class UserProfile(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     week_start_day: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     calendar_view: Mapped[str] = mapped_column(String(16), default="month", nullable=False)
+    default_view: Mapped[str] = mapped_column(String(16), default="planner", nullable=False)
 
     __table_args__ = (
         CheckConstraint("LENGTH(color_code) = 7 AND color_code LIKE '#%'", name="ck_user_profile_color_hex"),
@@ -93,6 +94,7 @@ class RecipeRating(Base):
     mealie_recipe_id: Mapped[str] = mapped_column(String(64), nullable=False)
     mealie_user_id: Mapped[str] = mapped_column(String(64), nullable=False)
     score: Mapped[int] = mapped_column(Integer, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
