@@ -380,7 +380,7 @@ def put_attendance(
         raise HTTPException(status_code=400, detail="Range cannot exceed 62 days")
 
     # Tag batch_id with acting user's ID so undo reverts only the current user's last batch
-    batch_id = f"{user_id}:{uuid.uuid4().hex}"
+    batch_id = f"{user_id}:{uuid.uuid4().hex[:24]}"
     current = payload.start_date
     updated = 0
 
