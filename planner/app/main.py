@@ -76,6 +76,7 @@ class LoginRequest(BaseModel):
 
 class RatingUpdate(BaseModel):
     score: int = Field(..., ge=-1, le=1)
+    note: str | None = Field(default=None, max_length=500)
 
 
 class ProfileUpdate(BaseModel):
