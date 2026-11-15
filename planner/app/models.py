@@ -1,5 +1,6 @@
 from datetime import date, datetime
-from sqlalchemy import Text, (
+from sqlalchemy import (
+    Text,
     Boolean,
     CheckConstraint,
     Date,

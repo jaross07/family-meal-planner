@@ -4,6 +4,7 @@ import { apiFetch } from './api'
 import CalendarView from './components/CalendarView.vue'
 import DayMealsModal from './components/DayMealsModal.vue'
 import DayPanel from './components/DayPanel.vue'
+import HenleyReviewView from './components/HenleyReviewView.vue'
 import RulesModal from './components/RulesModal.vue'
 import WeekPlanModal from './components/WeekPlanModal.vue'
 
@@ -43,6 +44,10 @@ const contexts = reactive({})
 const rules = ref([])
 const recommendations = ref(null)
 const myRatings = reactive({})
+const myNotes = reactive({})
+const familyNotes = ref({})
+const appMode = ref('planner')
+const henleyMealFilter = ref('all')
 const loadingRecs = ref(false)
 const planningRecipeId = ref(null)
 const syncing = ref(false)
@@ -59,14 +64,24 @@ function notify(msg) {
   }, 3500)
 }
 
+async function loadRatings() {
+  const rData = await apiFetch('/api/ratings')
+  for (const [rid, entry] of Object.entries(rData.my_ratings || {})) {
+    myRatings[rid] = entry.score
+    myNotes[rid] = entry.note || ''
+  }
+  familyNotes.value = rData.family_notes || {}
+}
+
 async function loadInitialData() {
   const prof = await apiFetch('/api/profile')
   currentUser.value = prof.current_user
   household.value = prof.household
   weekStartDay.value = prof.current_user.week_start_day ?? 0
   viewMode.value = prof.current_user.calendar_view || 'month'
+  appMode.value = prof.current_user.default_view || 'planner'
   authenticated.value = true
-  await Promise.all([loadVisibleRangeData(), loadRules(), loadDayDetails()])
+  await Promise.all([loadVisibleRangeData(), loadRules(), loadDayDetails(), loadRatings()])
 }
 
 async function handleLogin() {
@@ -286,6 +301,16 @@ async function handleRateRecipe(recipeId, score) {
   await loadDayDetails()
 }
 
+async function handleSaveReview({ recipeId, score, note }) {
+  await apiFetch(`/api/ratings/${recipeId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ score, note }),
+  })
+  notify('Saved rating & note!')
+  await loadRatings()
+  await loadDayDetails()
+}
+
 async function handleRemovePlanned(entry) {
   await apiFetch(`/api/plan/${entry.id}`, { method: 'DELETE' })
   notify(`Removed "${entry.name}" from Mealie`)
@@ -388,9 +413,13 @@ async function handleUpdatePreferences(payload) {
   const updated = await apiFetch('/api/profile', { method: 'PUT', body: JSON.stringify(payload) })
   weekStartDay.value = updated.week_start_day
   viewMode.value = updated.calendar_view
+  if (updated.default_view) {
+    appMode.value = updated.default_view
+  }
   if (currentUser.value) {
     currentUser.value.week_start_day = updated.week_start_day
     currentUser.value.calendar_view = updated.calendar_view
+    currentUser.value.default_view = updated.default_view
   }
 }
 
@@ -449,6 +478,24 @@ onMounted(async () => {
         >
           {{ currentUser.initials }} · {{ currentUser.display_name }}
         </span>
+        <div style="display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-left: 6px">
+          <button
+            type="button"
+            style="border: none; border-radius: 0; padding: 5px 10px; font-size: 0.82rem"
+            :style="appMode === 'planner' ? { background: '#2563eb', color: '#fff', fontWeight: '600' } : { background: '#fff' }"
+            @click="appMode = 'planner'"
+          >
+            Planner
+          </button>
+          <button
+            type="button"
+            style="border: none; border-radius: 0; padding: 5px 10px; font-size: 0.82rem"
+            :style="appMode === 'ratings' ? { background: '#eab308', color: '#1e293b', fontWeight: '700' } : { background: '#fff' }"
+            @click="appMode = 'ratings'"
+          >
+            ⭐ Ratings
+          </button>
+        </div>
       </div>
 
       <div class="nav-actions">
@@ -464,7 +511,27 @@ onMounted(async () => {
       </div>
     </header>
 
-    <main class="workspace">
+    <HenleyReviewView
+      v-if="appMode === 'ratings'"
+      :anchor-date="anchorDate"
+      :view-mode="viewMode"
+      :week-start-day="weekStartDay"
+      :meal-type="henleyMealFilter"
+      :selected-date="selectedDate"
+      :planned-meals="plannedMeals"
+      :my-ratings="myRatings"
+        :family-notes="familyNotes"
+      :my-notes="myNotes"
+      :family-notes="familyNotes"
+      :mealie-public-url="mealiePublicUrl"
+      @update:meal-type="henleyMealFilter = $event"
+      @update:view-mode="async (m) => { viewMode = m; await handleUpdatePreferences({ calendar_view: m }) }"
+      @navigate="navigateCalendar"
+      @select-date="selectedDate = $event"
+      @save-review="handleSaveReview"
+    />
+
+    <main v-else class="workspace">
       <CalendarView
         :anchor-date="anchorDate"
         v-model:view-mode="viewMode"
@@ -491,6 +558,7 @@ onMounted(async () => {
         :planned-meals="plannedMeals.filter(m => m.date === selectedDate && m.meal_type === mealType)"
         :day-attendance="attendance.filter(a => a.date === selectedDate && a.meal_type === mealType)"
         :my-ratings="myRatings"
+        :family-notes="familyNotes"
         :context="contexts[`${selectedDate}:${mealType}`]"
         :mealie-public-url="mealiePublicUrl"
         :loading="loadingRecs"

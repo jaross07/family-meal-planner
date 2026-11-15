@@ -33,6 +33,7 @@ const newRule = reactive({
 const prefs = reactive({
   week_start_day: props.currentUser?.week_start_day ?? 0,
   calendar_view: props.currentUser?.calendar_view ?? 'month',
+  default_view: props.currentUser?.default_view ?? 'planner',
 })
 const prefsSaved = ref(false)
 
@@ -62,6 +63,7 @@ function savePreferences() {
   emit('update-preferences', {
     week_start_day: Number(prefs.week_start_day),
     calendar_view: prefs.calendar_view,
+    default_view: prefs.default_view,
   })
   prefsSaved.value = true
   setTimeout(() => (prefsSaved.value = false), 1800)
@@ -110,11 +112,18 @@ function userName(uid) {
             </select>
           </label>
           <label style="font-size: 0.85rem">
-            Default view:
+            Calendar span:
             <select v-model="prefs.calendar_view" style="margin-left: 4px">
               <option value="month">Month</option>
               <option value="2week">2 Weeks</option>
               <option value="1week">1 Week</option>
+            </select>
+          </label>
+          <label style="font-size: 0.85rem">
+            Default mode:
+            <select v-model="prefs.default_view" style="margin-left: 4px">
+              <option value="planner">Planner</option>
+              <option value="ratings">Ratings</option>
             </select>
           </label>
           <button class="primary" @click="savePreferences">Save Preferences</button>

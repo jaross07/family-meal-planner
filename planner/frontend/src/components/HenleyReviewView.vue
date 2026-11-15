@@ -172,7 +172,7 @@ function recipeImageUrl(recipeId) {
 </script>
 
 <template>
-  <div class="main-grid">
+  <main class="workspace">
     <!-- Left: Planned Meals Calendar for Rating -->
     <div class="card">
       <div class="cal-header">
@@ -331,5 +331,5 @@ function recipeImageUrl(recipeId) {
         </div>
       </div>
     </div>
-  </div>
+  </main>
 </template>
