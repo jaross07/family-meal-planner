@@ -308,6 +308,7 @@ def get_recipe_rating(
         "mealie_recipe_id": recipe_id,
         "mealie_user_id": user_id,
         "score": row.score if row else 0,
+        "note": row.note if row else None,
     }
 
 
@@ -318,6 +319,7 @@ def upsert_recipe_rating(
     user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
+    clean_note = payload.note.strip() if payload.note and payload.note.strip() else None
     row = (
         db.query(RecipeRating)
         .filter(
@@ -331,16 +333,20 @@ def upsert_recipe_rating(
             mealie_recipe_id=recipe_id,
             mealie_user_id=user_id,
             score=payload.score,
+            note=clean_note,
         )
         db.add(row)
     else:
         row.score = payload.score
+        if payload.note is not None:
+            row.note = clean_note
 
     db.commit()
     return {
         "mealie_recipe_id": recipe_id,
         "mealie_user_id": user_id,
         "score": row.score,
+        "note": row.note,
     }
 
 
