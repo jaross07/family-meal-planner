@@ -18,6 +18,7 @@ const props = defineProps({
 const emit = defineEmits([
   'update-context',
   'rate-recipe',
+  'hide-recipe',
   'plan-recipe',
   'remove-planned',
   'replace-planned',
@@ -300,27 +301,37 @@ function chooseRecipe(item) {
             <button
               :class="{ 'active-dislike': (myRatings[item.mealie_recipe_id] ?? 0) === -1 }"
               title="Dislike (Hard Veto)"
-              @click="emit('rate-recipe', item.mealie_recipe_id, -1)"
+              @click="emit('rate-recipe',
+  'hide-recipe', item.mealie_recipe_id, -1)"
             >
               👎
             </button>
             <button
               :class="{ 'active-neutral': (myRatings[item.mealie_recipe_id] ?? 0) === 0 }"
               title="Neutral"
-              @click="emit('rate-recipe', item.mealie_recipe_id, 0)"
+              @click="emit('rate-recipe',
+  'hide-recipe', item.mealie_recipe_id, 0)"
             >
               😐
             </button>
             <button
               :class="{ 'active-like': (myRatings[item.mealie_recipe_id] ?? 0) === 1 }"
               title="Like"
-              @click="emit('rate-recipe', item.mealie_recipe_id, 1)"
+              @click="emit('rate-recipe',
+  'hide-recipe', item.mealie_recipe_id, 1)"
             >
               👍
             </button>
           </div>
 
           <div style="display: flex; gap: 6px">
+            <button
+              type="button"
+              title="Hide recipe from planner suggestions"
+              @click="emit('hide-recipe', item)"
+            >
+              🚫 Hide
+            </button>
             <a :href="mealieRecipeUrl(item.slug)" target="_blank" rel="noopener">
               <button type="button">Open in Mealie</button>
             </a>

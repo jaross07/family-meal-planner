@@ -60,7 +60,7 @@ async def generate_recommendations(
     }
 
     # Load active recipes and their metadata
-    active_recipes = db.query(RecipeCache).filter(RecipeCache.active.is_(True)).all()
+    active_recipes = db.query(RecipeCache).filter(RecipeCache.active.is_(True), RecipeCache.hidden.is_(False)).all()
     if not active_recipes:
         return {
             "date": target_date.isoformat(),

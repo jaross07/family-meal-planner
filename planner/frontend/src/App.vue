@@ -42,6 +42,7 @@ const attendance = ref([])
 const plannedMeals = ref([])
 const contexts = reactive({})
 const rules = ref([])
+const hiddenRecipes = ref([])
 const recommendations = ref(null)
 const myRatings = reactive({})
 const myNotes = reactive({})
@@ -81,7 +82,7 @@ async function loadInitialData() {
   viewMode.value = prof.current_user.calendar_view || 'month'
   appMode.value = prof.current_user.default_view || 'planner'
   authenticated.value = true
-  await Promise.all([loadVisibleRangeData(), loadRules(), loadDayDetails(), loadRatings()])
+  await Promise.all([loadVisibleRangeData(), loadRules(), loadDayDetails(), loadRatings(), loadHiddenRecipes()])
 }
 
 async function handleLogin() {
@@ -128,6 +129,11 @@ async function loadVisibleRangeData() {
 
 async function loadRules() {
   rules.value = await apiFetch('/api/rules')
+}
+
+async function loadHiddenRecipes() {
+  const res = await apiFetch('/api/recipes/hidden')
+  hiddenRecipes.value = res.items || []
 }
 
 async function loadDayDetails(includeVetoed = false) {
@@ -321,6 +327,24 @@ async function handleToggleRecipeLeftover(item) {
       : `Removed Makes Extra from "${item.name}"`
   )
   await loadDayDetails()
+}
+
+async function handleHideRecipe(item) {
+  await apiFetch(`/api/recipes/${item.mealie_recipe_id}/hidden`, {
+    method: 'PUT',
+    body: JSON.stringify({ hidden: true }),
+  })
+  notify(`Hidden "${item.name}" from planner suggestions (restore anytime in Configure)`)
+  await Promise.all([loadDayDetails(), loadHiddenRecipes()])
+}
+
+async function handleUnhideRecipe(item) {
+  await apiFetch(`/api/recipes/${item.mealie_recipe_id}/hidden`, {
+    method: 'PUT',
+    body: JSON.stringify({ hidden: false }),
+  })
+  notify(`Restored "${item.name}" to planner suggestions`)
+  await Promise.all([loadDayDetails(), loadHiddenRecipes()])
 }
 
 async function handleRateRecipe(recipeId, score) {
@@ -595,6 +619,7 @@ onMounted(async () => {
         :planning-recipe-id="planningRecipeId"
         @update-context="handleUpdateContext"
         @rate-recipe="handleRateRecipe"
+        @hide-recipe="handleHideRecipe"
         @toggle-recipe-leftover="handleToggleRecipeLeftover"
         @plan-recipe="handlePlanRecipe"
         @remove-planned="handleRemovePlanned"
@@ -628,6 +653,7 @@ onMounted(async () => {
     <RulesModal
       v-if="showRulesModal"
       :rules="rules"
+      :hidden-recipes="hiddenRecipes"
       :household="household"
       :current-user="currentUser"
       @close="showRulesModal = false"
@@ -636,6 +662,7 @@ onMounted(async () => {
       @add-exception="handleAddException"
       @update-member="handleUpdateMember"
       @update-preferences="handleUpdatePreferences"
+      @unhide-recipe="handleUnhideRecipe"
     />
   </div>
 </template>

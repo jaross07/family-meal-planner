@@ -5,6 +5,7 @@ const props = defineProps({
   rules: Array,
   household: Array,
   currentUser: Object,
+  hiddenRecipes: Array,
 })
 
 const emit = defineEmits([
@@ -14,6 +15,7 @@ const emit = defineEmits([
   'add-exception',
   'update-member',
   'update-preferences',
+  'unhide-recipe',
 ])
 
 const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -60,7 +62,8 @@ function submitRule() {
 }
 
 function savePreferences() {
-  emit('update-preferences', {
+  emit('update-preferences',
+  'unhide-recipe', {
     week_start_day: Number(prefs.week_start_day),
     calendar_view: prefs.calendar_view,
     default_view: prefs.default_view,
@@ -218,6 +221,22 @@ function userName(uid) {
               Skipped: {{ rule.exceptions.join(', ') }}
             </span>
           </div>
+        </div>
+      </div>
+
+      <!-- Hidden / Blocked Recipes -->
+      <div class="panel-section" style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px">
+        <h3 style="margin: 0 0 6px; font-size: 0.95rem">Hidden Recipes</h3>
+        <div v-if="!hiddenRecipes?.length" style="color: var(--muted); font-size: 0.85rem">
+          No hidden recipes. Click <strong>🚫 Hide</strong> on any recipe card to block it from recommendations.
+        </div>
+        <div
+          v-for="hr in hiddenRecipes || []"
+          :key="hr.mealie_recipe_id"
+          style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px"
+        >
+          <span style="font-size: 0.88rem">{{ hr.name }}</span>
+          <button type="button" @click="emit('unhide-recipe', hr)">Restore</button>
         </div>
       </div>
     </div>

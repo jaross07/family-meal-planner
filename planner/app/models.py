@@ -29,6 +29,7 @@ class RecipeCache(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
 class RecipeMeta(Base):
