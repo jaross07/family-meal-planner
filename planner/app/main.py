@@ -5,6 +5,8 @@ import logging
 from pathlib import Path
 import uuid
 
+import httpx
+
 from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -1082,10 +1084,15 @@ async def ingest_recipe_preview(
         return {"source_url": payload.url.strip(), "recipe": parsed.model_dump()}
     except RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Target site blocked or failed request (HTTP {exc.response.status_code})",
+        ) from exc
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to fetch recipe URL: {exc}") from exc
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Recipe extraction failed: {exc}") from exc
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Gemini extraction error: {exc}") from exc
 
 
 @app.post("/api/ingest/commit", status_code=201)
