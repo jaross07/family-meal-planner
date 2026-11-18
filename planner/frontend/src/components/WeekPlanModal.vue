@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { apiFetch } from '../api'
+import { parseIso, toIso, startOfWeek } from '../utils'
 
 const props = defineProps({
   anchorDate: String,
@@ -9,24 +10,6 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'planned'])
-
-function parseIso(iso) {
-  const [y, m, d] = iso.split('-').map(Number)
-  return new Date(y, m - 1, d)
-}
-
-function toIso(d) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-function startOfWeek(d, startDay) {
-  const dow = d.getDay()
-  const diff = (dow - startDay + 7) % 7
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - diff)
-}
 
 const weekStart = ref(toIso(startOfWeek(parseIso(props.anchorDate), props.weekStartDay ?? 0)))
 const loading = ref(false)

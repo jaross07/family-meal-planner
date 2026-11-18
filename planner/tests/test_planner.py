@@ -246,3 +246,26 @@ def test_authorization_isolates_user_ratings_and_profile(client, db_session):
     assert prof_resp.status_code == 200
     assert db_session.get(UserProfile, "u-justin").color_code == "#1D4ED8"
     assert db_session.get(UserProfile, "u-jenesa").color_code == "#EC4899"
+
+    # Verify profile includes mealie_public_url and default_view
+    get_prof = client.get("/api/profile")
+    assert get_prof.status_code == 200
+    prof_data = get_prof.json()
+    assert "mealie_public_url" in prof_data
+    assert prof_data["current_user"]["default_view"] == "planner"
+
+    # Test updating default_view
+    update_view_resp = client.put("/api/profile", json={"default_view": "ratings"})
+    assert update_view_resp.status_code == 200
+    assert update_view_resp.json()["default_view"] == "ratings"
+    assert db_session.get(UserProfile, "u-justin").default_view == "ratings"
+
+    # Test bulk ratings endpoint
+    client.put("/api/ratings/r-tacos", json={"score": 1, "note": "Awesome tacos"})
+    ratings_resp = client.get("/api/ratings")
+    assert ratings_resp.status_code == 200
+    bulk_data = ratings_resp.json()
+    assert bulk_data["my_ratings"]["r-tacos"]["score"] == 1
+    assert bulk_data["my_ratings"]["r-tacos"]["note"] == "Awesome tacos"
+    assert len(bulk_data["family_notes"]["r-tacos"]) == 1
+    assert bulk_data["family_notes"]["r-tacos"][0]["display_name"] == "Justin"

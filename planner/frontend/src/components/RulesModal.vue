@@ -62,8 +62,7 @@ function submitRule() {
 }
 
 function savePreferences() {
-  emit('update-preferences',
-  'unhide-recipe', {
+  emit('update-preferences', {
     week_start_day: Number(prefs.week_start_day),
     calendar_view: prefs.calendar_view,
     default_view: prefs.default_view,

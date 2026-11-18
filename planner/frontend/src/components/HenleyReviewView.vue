@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { parseIso, toIso, startOfWeek } from '../utils'
 
 const props = defineProps({
   anchorDate: String,
@@ -32,24 +33,6 @@ const dowHeaders = computed(() =>
     ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 )
-
-function parseIso(iso) {
-  const [y, m, d] = iso.split('-').map(Number)
-  return new Date(y, m - 1, d)
-}
-
-function toIso(d) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-function startOfWeek(d, startDay) {
-  const dow = d.getDay()
-  const diff = (dow - startDay + 7) % 7
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - diff)
-}
 
 const calendarDays = computed(() => {
   const anchor = parseIso(props.anchorDate)
@@ -153,17 +136,14 @@ function setScore(recipeId, score) {
   draftScores.value[recipeId] = score
 }
 
-async function submitReview(recipeId) {
+function submitReview(recipeId) {
   savingId.value = recipeId
-  try {
-    await emit('save-review', {
-      recipeId,
-      score: draftScores.value[recipeId] ?? 0,
-      note: draftNotes.value[recipeId] ?? '',
-    })
-  } finally {
-    savingId.value = null
-  }
+  emit('save-review', {
+    recipeId,
+    score: draftScores.value[recipeId] ?? 0,
+    note: draftNotes.value[recipeId] ?? '',
+    onDone: () => { savingId.value = null },
+  })
 }
 
 function recipeImageUrl(recipeId) {
@@ -279,7 +259,7 @@ function recipeImageUrl(recipeId) {
           </div>
 
           <!-- Big Kid-Friendly Rating Buttons -->
-          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px">
+          <div class="rate-btns" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px">
             <button
               type="button"
               style="padding: 10px 6px; font-size: 0.95rem; font-weight: 600; border-radius: 10px"

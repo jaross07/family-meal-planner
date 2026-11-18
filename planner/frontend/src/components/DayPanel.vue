@@ -117,8 +117,7 @@ function chooseRecipe(item) {
     <div class="panel-section">
       <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
         <h2 style="margin: 0 0 4px; font-size: 1.1rem">{{ formattedDate }}</h2>
-        <button @click="emit('open-day-modal',
-  'toggle-recipe-leftover', selectedDate)">Edit Day Meals</button>
+        <button @click="emit('open-day-modal', selectedDate)">Edit Day Meals</button>
       </div>
       <div style="font-size: 0.85rem; color: var(--muted); text-transform: capitalize">
         {{ mealType }} &bull;
@@ -301,24 +300,21 @@ function chooseRecipe(item) {
             <button
               :class="{ 'active-dislike': (myRatings[item.mealie_recipe_id] ?? 0) === -1 }"
               title="Dislike (Hard Veto)"
-              @click="emit('rate-recipe',
-  'hide-recipe', item.mealie_recipe_id, -1)"
+              @click="emit('rate-recipe', item.mealie_recipe_id, -1)"
             >
               👎
             </button>
             <button
               :class="{ 'active-neutral': (myRatings[item.mealie_recipe_id] ?? 0) === 0 }"
               title="Neutral"
-              @click="emit('rate-recipe',
-  'hide-recipe', item.mealie_recipe_id, 0)"
+              @click="emit('rate-recipe', item.mealie_recipe_id, 0)"
             >
               😐
             </button>
             <button
               :class="{ 'active-like': (myRatings[item.mealie_recipe_id] ?? 0) === 1 }"
               title="Like"
-              @click="emit('rate-recipe',
-  'hide-recipe', item.mealie_recipe_id, 1)"
+              @click="emit('rate-recipe', item.mealie_recipe_id, 1)"
             >
               👍
             </button>

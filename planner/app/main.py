@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.auth import (
     clear_session_cookie,
     create_session_cookie,
@@ -86,6 +87,7 @@ class ProfileUpdate(BaseModel):
     active: bool | None = None
     week_start_day: int | None = Field(default=None, ge=0, le=1)
     calendar_view: str | None = Field(default=None, pattern=r"^(month|2week|1week)$")
+    default_view: str | None = Field(default=None, pattern=r"^(planner|ratings)$")
 
 
 class AttendancePutRequest(BaseModel):
@@ -131,7 +133,7 @@ class ContextUpdateRequest(BaseModel):
 
 class RecipeMetaUpdateRequest(BaseModel):
     leftover_yield: bool = False
-    prep_time_minutes: int | None = Field(default=None, ge=1, le=1440)
+    prep_time_minutes: int | None = Field(default=None, ge=1, le=480)
     leftover_type: str | None = Field(default=None, max_length=100)
 
 
@@ -203,6 +205,7 @@ def get_my_profile(
         raise HTTPException(status_code=404, detail="Profile not found")
     all_profiles = db.query(UserProfile).order_by(UserProfile.display_name).all()
     return {
+        "mealie_public_url": settings.mealie_public_url,
         "current_user": {
             "mealie_user_id": profile.mealie_user_id,
             "display_name": profile.display_name,
@@ -210,6 +213,7 @@ def get_my_profile(
             "color_code": profile.color_code,
             "week_start_day": profile.week_start_day,
             "calendar_view": profile.calendar_view,
+            "default_view": profile.default_view,
         },
         "household": [
             {
@@ -244,6 +248,8 @@ def update_my_profile(
         profile.week_start_day = payload.week_start_day
     if payload.calendar_view is not None:
         profile.calendar_view = payload.calendar_view
+    if payload.default_view is not None:
+        profile.default_view = payload.default_view
 
     db.commit()
     db.refresh(profile)
@@ -254,6 +260,7 @@ def update_my_profile(
         "color_code": profile.color_code,
         "week_start_day": profile.week_start_day,
         "calendar_view": profile.calendar_view,
+        "default_view": profile.default_view,
     }
 
 
@@ -334,6 +341,41 @@ def set_recipe_hidden(
 
 
 # --- Ratings ---
+
+@app.get("/api/ratings")
+def get_all_my_ratings(
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    my_rows = (
+        db.query(RecipeRating)
+        .filter(RecipeRating.mealie_user_id == user_id)
+        .all()
+    )
+    my_ratings = {
+        row.mealie_recipe_id: {"score": row.score, "note": row.note}
+        for row in my_rows
+    }
+
+    all_notes = (
+        db.query(RecipeRating)
+        .filter(RecipeRating.note.isnot(None), RecipeRating.note != "")
+        .all()
+    )
+    profiles = {p.mealie_user_id: p for p in db.query(UserProfile).all()}
+    family_notes: dict[str, list] = {}
+    for row in all_notes:
+        profile = profiles.get(row.mealie_user_id)
+        display_name = profile.display_name if profile else row.mealie_user_id
+        family_notes.setdefault(row.mealie_recipe_id, []).append({
+            "user_id": row.mealie_user_id,
+            "display_name": display_name,
+            "note": row.note,
+            "score": row.score,
+        })
+
+    return {"my_ratings": my_ratings, "family_notes": family_notes}
+
 
 @app.get("/api/ratings/{recipe_id}")
 def get_recipe_rating(
@@ -612,7 +654,7 @@ def get_meal_contexts_range(
 @app.get("/api/context")
 def get_meal_context(
     target_date: date = Query(..., alias="date"),
-    meal_type: str = Query(default="dinner"),
+    meal_type: str = Query(default="dinner", pattern=r"^(breakfast|lunch|dinner)$"),
     _: dict = Depends(get_current_session),
     db: Session = Depends(get_db),
 ):
@@ -759,7 +801,7 @@ def create_leftover_chain(
 @app.get("/api/recommendations")
 async def get_recommendations(
     target_date: date = Query(..., alias="date"),
-    meal_type: str = Query(default="dinner"),
+    meal_type: str = Query(default="dinner", pattern=r"^(breakfast|lunch|dinner)$"),
     page: int = Query(default=1, ge=1),
     include_vetoed: bool = Query(default=False),
     session: dict = Depends(get_current_session),
@@ -807,12 +849,6 @@ class BatchPlanItem(BaseModel):
 
 class BatchPlanRequest(BaseModel):
     items: list[BatchPlanItem]
-
-
-class RecipeMetaUpdateRequest(BaseModel):
-    leftover_yield: bool
-    prep_time_minutes: int | None = Field(default=None, ge=1, le=480)
-    leftover_type: str | None = Field(default=None, max_length=100)
 
 
 @app.put("/api/recipes/{recipe_id}/meta")
@@ -917,7 +953,7 @@ async def remove_planned_meal(
 @app.get("/api/week-preview")
 async def preview_week_plan(
     start_date: date = Query(...),
-    meal_type: str = Query(default="dinner"),
+    meal_type: str = Query(default="dinner", pattern=r"^(breakfast|lunch|dinner)$"),
     session: dict = Depends(get_current_session),
     db: Session = Depends(get_db),
 ):

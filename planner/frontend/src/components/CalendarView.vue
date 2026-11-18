@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onUnmounted, ref, watch } from 'vue'
+import { parseIso, toIso, startOfWeek } from '../utils'
 
 const props = defineProps({
   anchorDate: String,
@@ -55,24 +56,6 @@ const dowHeaders = computed(() =>
     ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 )
-
-function parseIso(iso) {
-  const [y, m, d] = iso.split('-').map(Number)
-  return new Date(y, m - 1, d)
-}
-
-function toIso(d) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-function startOfWeek(d, startDay) {
-  const dow = d.getDay()
-  const diff = (dow - startDay + 7) % 7
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - diff)
-}
 
 const calendarDays = computed(() => {
   const anchor = parseIso(props.anchorDate)

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { apiFetch } from './api'
+import { parseIso, toIso } from './utils'
 import CalendarView from './components/CalendarView.vue'
 import DayMealsModal from './components/DayMealsModal.vue'
 import DayPanel from './components/DayPanel.vue'
@@ -19,17 +20,24 @@ const household = ref([])
 const mealieUnavailable = ref(false)
 const toastMessage = ref('')
 
-function toIso(d) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+const darkMode = ref(
+  localStorage.getItem('family_planner_theme') === 'dark' ||
+  (!localStorage.getItem('family_planner_theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)
+)
+
+function applyTheme(isDark) {
+  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')
 }
 
-function parseIso(iso) {
-  const [y, m, d] = iso.split('-').map(Number)
-  return new Date(y, m - 1, d)
+function toggleDarkMode() {
+  darkMode.value = !darkMode.value
+  const theme = darkMode.value ? 'dark' : 'light'
+  localStorage.setItem('family_planner_theme', theme)
+  applyTheme(darkMode.value)
 }
+
+// Initial theme setup
+applyTheme(darkMode.value)
 
 const todayIso = toIso(new Date())
 const anchorDate = ref(todayIso)
@@ -56,7 +64,7 @@ const showRulesModal = ref(false)
 const showWeekModal = ref(false)
 const dayModalDate = ref(null)
 
-const mealiePublicUrl = `${window.location.protocol}//${window.location.hostname}`
+const mealiePublicUrl = ref(`${window.location.protocol}//${window.location.hostname}`)
 
 function notify(msg) {
   toastMessage.value = msg
@@ -78,6 +86,9 @@ async function loadInitialData() {
   const prof = await apiFetch('/api/profile')
   currentUser.value = prof.current_user
   household.value = prof.household
+  if (prof.mealie_public_url) {
+    mealiePublicUrl.value = prof.mealie_public_url
+  }
   weekStartDay.value = prof.current_user.week_start_day ?? 0
   viewMode.value = prof.current_user.calendar_view || 'month'
   appMode.value = prof.current_user.default_view || 'planner'
@@ -356,14 +367,18 @@ async function handleRateRecipe(recipeId, score) {
   await loadDayDetails()
 }
 
-async function handleSaveReview({ recipeId, score, note }) {
-  await apiFetch(`/api/ratings/${recipeId}`, {
-    method: 'PUT',
-    body: JSON.stringify({ score, note }),
-  })
-  notify('Saved rating & note!')
-  await loadRatings()
-  await loadDayDetails()
+async function handleSaveReview({ recipeId, score, note, onDone }) {
+  try {
+    await apiFetch(`/api/ratings/${recipeId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ score, note }),
+    })
+    notify('Saved rating & note!')
+    await loadRatings()
+    await loadDayDetails()
+  } finally {
+    if (onDone) onDone()
+  }
 }
 
 async function handleRemovePlanned(entry) {
@@ -498,7 +513,12 @@ onMounted(async () => {
 
   <div v-else-if="!authenticated" class="login-wrap">
     <form class="login-card" @submit.prevent="handleLogin">
-      <h1>Family Meal Planner</h1>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px">
+        <h1 style="margin: 0">Family Meal Planner</h1>
+        <button type="button" style="padding: 4px 8px; font-size: 0.8rem" @click="toggleDarkMode" :title="darkMode ? 'Switch to light mode' : 'Switch to dark mode'">
+          {{ darkMode ? '☀️ Light' : '🌙 Dark' }}
+        </button>
+      </div>
       <p>Sign in with your Mealie username and password.</p>
       <div v-if="loginError" class="error-msg">{{ loginError }}</div>
       <div class="field">
@@ -554,6 +574,14 @@ onMounted(async () => {
       </div>
 
       <div class="nav-actions">
+        <button
+          type="button"
+          :title="darkMode ? 'Switch to light mode' : 'Switch to dark mode'"
+          class="theme-toggle-btn"
+          @click="toggleDarkMode"
+        >
+          {{ darkMode ? '☀️ Light' : '🌙 Dark' }}
+        </button>
         <a :href="mealiePublicUrl" target="_blank" rel="noopener">
           <button type="button">Open Mealie</button>
         </a>
