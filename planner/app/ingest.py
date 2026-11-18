@@ -147,7 +147,7 @@ async def preview_recipe_from_url(url: str, user_token: str) -> ParsedRecipePayl
 
     client = genai.Client(api_key=settings.gemini_api_key)
     response = await client.aio.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3.8-flash",
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
