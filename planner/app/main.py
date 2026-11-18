@@ -33,6 +33,7 @@ from app.models import (
 )
 from app.recommend import generate_recommendations
 from app.rules import resolve_attendance_range
+from app.ingest import ParsedRecipePayload, commit_recipe_to_mealie, preview_recipe_from_url
 from app.sync import sync_recipes_from_mealie
 
 logger = logging.getLogger("planner")
@@ -1056,6 +1057,58 @@ async def commit_week_plan(
                 detail=str(exc),
             ) from exc
     return {"status": "planned", "count": len(created), "entries": created}
+
+
+class IngestPreviewRequest(BaseModel):
+    url: str = Field(..., min_length=8, max_length=2048)
+
+
+class IngestCommitRequest(BaseModel):
+    source_url: str = Field(..., min_length=8, max_length=2048)
+    recipe: ParsedRecipePayload
+
+
+@app.post("/api/ingest/preview")
+async def ingest_recipe_preview(
+    payload: IngestPreviewRequest,
+    session: dict = Depends(get_current_session),
+):
+    """Fetch a recipe URL and extract normalized ingredients/steps via Gemini Flash for HITL review."""
+    try:
+        parsed = await preview_recipe_from_url(
+            url=payload.url.strip(),
+            user_token=session["mealie_token"],
+        )
+        return {"source_url": payload.url.strip(), "recipe": parsed.model_dump()}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to fetch recipe URL: {exc}") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Recipe extraction failed: {exc}") from exc
+
+
+@app.post("/api/ingest/commit", status_code=201)
+async def ingest_recipe_commit(
+    payload: IngestCommitRequest,
+    session: dict = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    """Inject the user-reviewed normalized recipe into Mealie and refresh local recipe_cache."""
+    try:
+        created = await commit_recipe_to_mealie(
+            payload=payload.recipe,
+            source_url=payload.source_url.strip(),
+            user_token=session["mealie_token"],
+        )
+        await sync_recipes_from_mealie(db)
+        return {"status": "imported", "recipe": created}
+    except MealieAuthError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    except MealieUnavailableError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Mealie rejected recipe payload: {exc}") from exc
 
 
 @app.post("/api/sync")

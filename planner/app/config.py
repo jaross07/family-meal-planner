@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     mealie_service_token: str
     session_secret: str
     database_url: str
+    gemini_api_key: str = ""
 
 
 settings = Settings()

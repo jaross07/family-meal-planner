@@ -46,6 +46,7 @@ services:
       MEALIE_PUBLIC_URL: ${MEALIE_BASE_URL}
       MEALIE_SERVICE_TOKEN: ${MEALIE_SERVICE_TOKEN}
       SESSION_SECRET: ${SESSION_SECRET}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       DATABASE_URL: postgresql+psycopg://planner:${PLANNER_DB_PASSWORD}@planner-db:5432/planner
     depends_on:
       planner-db:
