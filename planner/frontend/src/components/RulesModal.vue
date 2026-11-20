@@ -6,6 +6,7 @@ const props = defineProps({
   household: Array,
   currentUser: Object,
   hiddenRecipes: Array,
+  familyEvents: Array,
 })
 
 const emit = defineEmits([
@@ -16,6 +17,8 @@ const emit = defineEmits([
   'update-member',
   'update-preferences',
   'unhide-recipe',
+  'create-family-event',
+  'delete-family-event',
 ])
 
 const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -40,6 +43,19 @@ const prefs = reactive({
 const prefsSaved = ref(false)
 
 const exceptionDates = reactive({})
+const newFamilyEvent = reactive({ month: 1, day: 1, label: '', emoji: '🎂' })
+const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+function submitFamilyEvent() {
+  if (!newFamilyEvent.label.trim()) return
+  emit('create-family-event', {
+    month: Number(newFamilyEvent.month),
+    day: Number(newFamilyEvent.day),
+    label: newFamilyEvent.label.trim(),
+    emoji: newFamilyEvent.emoji || '🎉',
+  })
+  newFamilyEvent.label = ''
+}
 const savedMemberId = ref('')
 
 function submitRule() {
@@ -220,6 +236,52 @@ function userName(uid) {
               Skipped: {{ rule.exceptions.join(', ') }}
             </span>
           </div>
+        </div>
+      </div>
+
+      <!-- Custom Annual Family Dates (Birthdays, Anniversaries) -->
+      <div class="panel-section" style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px">
+        <h3 style="margin: 0 0 6px; font-size: 0.95rem">Custom Family Dates (Annual)</h3>
+        <div style="font-size: 0.8rem; color: var(--muted); margin-bottom: 8px">
+          US Federal Holidays appear automatically on the calendar. Add birthdays, anniversaries, or special family dates below:
+        </div>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px">
+          <select v-model="newFamilyEvent.emoji" aria-label="Icon">
+            <option value="🎂">🎂</option>
+            <option value="💍">💍</option>
+            <option value="🎉">🎉</option>
+            <option value="🎓">🎓</option>
+            <option value="✈️">✈️</option>
+            <option value="🍽️">🍽️</option>
+          </select>
+          <select v-model.number="newFamilyEvent.month" aria-label="Month">
+            <option v-for="(mName, idx) in monthNames" :key="idx" :value="idx + 1">{{ mName }}</option>
+          </select>
+          <input
+            v-model.number="newFamilyEvent.day"
+            type="number"
+            min="1"
+            max="31"
+            style="width: 60px"
+            aria-label="Day"
+          />
+          <input
+            v-model="newFamilyEvent.label"
+            placeholder="e.g. Henley's Birthday"
+            style="flex: 1; min-width: 160px"
+          />
+          <button type="button" class="primary" @click="submitFamilyEvent">Add Date</button>
+        </div>
+
+        <div
+          v-for="ev in familyEvents || []"
+          :key="ev.id"
+          style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px"
+        >
+          <span style="font-size: 0.88rem">
+            {{ ev.emoji }} <strong>{{ monthNames[ev.month - 1] }} {{ ev.day }}</strong> — {{ ev.label }}
+          </span>
+          <button type="button" class="danger" @click="emit('delete-family-event', ev.id)">Delete</button>
         </div>
       </div>
 

@@ -162,3 +162,13 @@ class RuleException(Base):
     __table_args__ = (
         UniqueConstraint("rule_id", "date", name="uq_rule_exception_date"),
     )
+
+
+class FamilyEvent(Base):
+    __tablename__ = "family_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    day: Mapped[int] = mapped_column(Integer, nullable=False)
+    label: Mapped[str] = mapped_column(String(120), nullable=False)
+    emoji: Mapped[str] = mapped_column(String(16), default="🎉", nullable=False)

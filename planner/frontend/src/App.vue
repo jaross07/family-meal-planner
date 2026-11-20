@@ -49,6 +49,8 @@ const selectedDate = ref(todayIso)
 
 const attendance = ref([])
 const plannedMeals = ref([])
+const holidaysList = ref([])
+const familyEvents = ref([])
 const contexts = reactive({})
 const rules = ref([])
 const hiddenRecipes = ref([])
@@ -128,13 +130,16 @@ async function loadVisibleRangeData() {
   const fromStr = toIso(start)
   const toStr = toIso(end)
 
-  const [attData, ctxList, planData] = await Promise.all([
+  const [attData, ctxList, planData, holData] = await Promise.all([
     apiFetch(`/api/attendance?from=${fromStr}&to=${toStr}`),
     apiFetch(`/api/contexts?from=${fromStr}&to=${toStr}`),
     apiFetch(`/api/planned?from=${fromStr}&to=${toStr}`),
+    apiFetch(`/api/holidays?from=${fromStr}&to=${toStr}`),
   ])
   attendance.value = attData.items
   plannedMeals.value = planData.items || []
+  holidaysList.value = holData.items || []
+  familyEvents.value = holData.family_events || []
   for (const c of ctxList) {
     contexts[`${c.date}:${c.meal_type}`] = c
   }
@@ -413,6 +418,21 @@ async function handleRecipeImported(recipe) {
   await loadDayDetails()
 }
 
+async function handleCreateFamilyEvent(payload) {
+  await apiFetch('/api/family-events', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  notify(`Added annual family date: ${payload.label}`)
+  await loadVisibleRangeData()
+}
+
+async function handleDeleteFamilyEvent(eventId) {
+  await apiFetch(`/api/family-events/${eventId}`, { method: 'DELETE' })
+  notify('Removed family date')
+  await loadVisibleRangeData()
+}
+
 async function handlePlanRecipe(item) {
   planningRecipeId.value = item.mealie_recipe_id
   try {
@@ -610,6 +630,7 @@ onMounted(async () => {
       :meal-type="henleyMealFilter"
       :selected-date="selectedDate"
       :planned-meals="plannedMeals"
+        :holidays="holidaysList"
       :my-ratings="myRatings"
         :family-notes="familyNotes"
       :my-notes="myNotes"
@@ -696,10 +717,13 @@ onMounted(async () => {
       v-if="showRulesModal"
       :rules="rules"
       :hidden-recipes="hiddenRecipes"
+      :family-events="familyEvents"
       :household="household"
       :current-user="currentUser"
       @close="showRulesModal = false"
       @create-rule="handleCreateRule"
+      @create-family-event="handleCreateFamilyEvent"
+      @delete-family-event="handleDeleteFamilyEvent"
       @delete-rule="handleDeleteRule"
       @add-exception="handleAddException"
       @update-member="handleUpdateMember"

@@ -12,6 +12,7 @@ const props = defineProps({
   household: Array,
   contexts: Object,
   plannedMeals: Array,
+  holidays: Array,
   undoAvailable: Boolean,
 })
 
@@ -99,6 +100,15 @@ const headerLabel = computed(() => {
   const fStr = first.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   const lStr = last.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   return `${fStr} – ${lStr}`
+})
+
+const holidaysByDate = computed(() => {
+  const map = {}
+  for (const h of props.holidays || []) {
+    if (!map[h.date]) map[h.date] = []
+    map[h.date].push(h)
+  }
+  return map
 })
 
 const plannedByDate = computed(() => {
@@ -406,6 +416,17 @@ function badgeStyle(entry) {
             {{ entry.initials }} · {{ entry.status }}
           </button>
         </div>
+        <div
+          v-for="(hol, hIdx) in holidaysByDate[cell.iso] || []"
+          :key="`hol-${cell.iso}-${hIdx}`"
+          :style="hol.source === 'family'
+            ? 'margin-top: 3px; background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; border-radius: 5px; padding: 1px 5px; font-size: 0.68rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis'
+            : 'margin-top: 3px; background: #ede9fe; color: #5b21b6; border: 1px solid #c4b5fd; border-radius: 5px; padding: 1px 5px; font-size: 0.68rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis'"
+          :title="hol.label"
+        >
+          {{ hol.emoji }} {{ hol.label }}
+        </div>
+
         <div
           v-for="pm in plannedByDate[cell.iso] || []"
           :key="pm.id || pm.mealie_recipe_id"

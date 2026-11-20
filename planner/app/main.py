@@ -5,6 +5,8 @@ import logging
 from pathlib import Path
 import uuid
 
+import holidays as pyholidays
+
 import httpx
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
@@ -24,6 +26,7 @@ from app.database import SessionLocal, get_db
 from app.mealie_client import MealieAuthError, MealieUnavailableError, mealie_client
 from app.models import (
     MealAttendance,
+    FamilyEvent,
     MealContext,
     RecipeCache,
     RecipeLeftoverChain,
@@ -1118,6 +1121,121 @@ async def ingest_recipe_commit(
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Mealie rejected recipe payload: {exc}") from exc
+
+
+class FamilyEventCreate(BaseModel):
+    month: int = Field(..., ge=1, le=12)
+    day: int = Field(..., ge=1, le=31)
+    label: str = Field(..., min_length=1, max_length=120)
+    emoji: str = Field(default="🎉", min_length=1, max_length=16)
+
+
+HOLIDAY_EMOJIS = {
+    "New Year's Day": "🎆",
+    "Martin Luther King Jr. Day": "✊",
+    "Washington's Birthday": "🇺🇸",
+    "Memorial Day": "🇺🇸",
+    "Juneteenth National Independence Day": "🎉",
+    "Independence Day": "🎇",
+    "Labor Day": "🛠️",
+    "Columbus Day": "🧭",
+    "Veterans Day": "🎖️",
+    "Thanksgiving Day": "🦃",
+    "Christmas Day": "🎄",
+}
+
+
+@app.get("/api/holidays")
+def get_holidays_and_events(
+    from_date: date = Query(..., alias="from"),
+    to_date: date = Query(..., alias="to"),
+    _: dict = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    """Return US Federal Holidays + custom recurring family dates for the visible window."""
+    years = list(range(from_date.year, to_date.year + 1))
+    us_hols = pyholidays.country_holidays("US", years=years)
+    custom_rows = db.query(FamilyEvent).order_by(FamilyEvent.month, FamilyEvent.day, FamilyEvent.id).all()
+
+    items = []
+    cur = from_date
+    while cur <= to_date:
+        if cur in us_hols:
+            name = us_hols.get(cur)
+            items.append({
+                "date": cur.isoformat(),
+                "label": name,
+                "emoji": HOLIDAY_EMOJIS.get(name, "🏛️"),
+                "source": "us_holiday",
+            })
+        for ev in custom_rows:
+            if ev.month == cur.month and ev.day == cur.day:
+                items.append({
+                    "id": ev.id,
+                    "date": cur.isoformat(),
+                    "label": ev.label,
+                    "emoji": ev.emoji or "🎉",
+                    "source": "family",
+                })
+        cur += timedelta(days=1)
+
+    return {
+        "items": items,
+        "family_events": [
+            {
+                "id": ev.id,
+                "month": ev.month,
+                "day": ev.day,
+                "label": ev.label,
+                "emoji": ev.emoji,
+            }
+            for ev in custom_rows
+        ],
+    }
+
+
+@app.post("/api/family-events", status_code=201)
+def create_family_event(
+    payload: FamilyEventCreate,
+    _: dict = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    # Validate calendar month/day (allow Feb 29)
+    try:
+        date(2024, payload.month, payload.day)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid month/day combination") from exc
+
+    ev = FamilyEvent(
+        month=payload.month,
+        day=payload.day,
+        label=payload.label.strip(),
+        emoji=(payload.emoji or "🎉").strip(),
+    )
+    db.add(ev)
+    db.commit()
+    db.refresh(ev)
+    return {
+        "id": ev.id,
+        "month": ev.month,
+        "day": ev.day,
+        "label": ev.label,
+        "emoji": ev.emoji,
+    }
+
+
+@app.delete("/api/family-events/{event_id}")
+def delete_family_event(
+    event_id: int,
+    _: dict = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    ev = db.get(FamilyEvent, event_id)
+    if not ev:
+        raise HTTPException(status_code=404, detail="Family event not found")
+    db.delete(ev)
+    db.commit()
+    return {"status": "deleted", "id": event_id}
 
 
 @app.post("/api/sync")
