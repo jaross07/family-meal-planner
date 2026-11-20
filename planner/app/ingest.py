@@ -243,21 +243,33 @@ async def commit_recipe_to_mealie(
                 }
             )
 
-        # 3. Patch full normalized recipe details into Mealie
-        patch_body: dict[str, Any] = {
-            "name": payload.name.strip(),
-            "description": payload.description,
-            "orgURL": source_url,
-            "recipeYield": payload.recipe_yield or "",
-            "prepTime": f"{payload.prep_time_minutes} Minutes" if payload.prep_time_minutes else None,
-            "cookTime": f"{payload.cook_time_minutes} Minutes" if payload.cook_time_minutes else None,
-            "totalTime": f"{payload.total_time_minutes} Minutes" if payload.total_time_minutes else None,
-            "recipeIngredient": structured_ingredients,
-            "recipeInstructions": [{"text": step.strip()} for step in payload.instructions if step.strip()],
-        }
-        patch_resp = await client.patch(f"/api/recipes/{slug}", json=patch_body, headers=headers)
-        patch_resp.raise_for_status()
-        updated_recipe = patch_resp.json()
+        # 3. Fetch full recipe template from Mealie and PUT updated fields
+        get_resp = await client.get(f"/api/recipes/{slug}", headers=headers)
+        get_resp.raise_for_status()
+        recipe_doc = get_resp.json()
+
+        recipe_doc["name"] = payload.name.strip()
+        recipe_doc["description"] = payload.description or ""
+        recipe_doc["orgURL"] = source_url
+        recipe_doc["recipeYield"] = payload.recipe_yield or ""
+        if payload.prep_time_minutes is not None:
+            recipe_doc["prepTime"] = f"{payload.prep_time_minutes} Minutes"
+        if payload.cook_time_minutes is not None:
+            recipe_doc["cookTime"] = f"{payload.cook_time_minutes} Minutes"
+        if payload.total_time_minutes is not None:
+            recipe_doc["totalTime"] = f"{payload.total_time_minutes} Minutes"
+        recipe_doc["recipeIngredient"] = structured_ingredients
+        recipe_doc["recipeInstructions"] = [
+            {"title": "", "text": step.strip(), "ingredientReferences": []}
+            for step in payload.instructions
+            if step.strip()
+        ]
+
+        put_resp = await client.put(f"/api/recipes/{slug}", json=recipe_doc, headers=headers)
+        if put_resp.status_code >= 400:
+            await client.delete(f"/api/recipes/{slug}", headers=headers)
+            raise RuntimeError(f"Mealie rejected recipe ({put_resp.status_code}): {put_resp.text[:300]}")
+        updated_recipe = put_resp.json()
 
         # 4. Download and attach hero image if available
         if payload.image_url:
