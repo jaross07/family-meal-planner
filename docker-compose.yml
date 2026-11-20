@@ -74,7 +74,14 @@ services:
       timeout: 5s
       retries: 5
 
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+
 volumes:
   mealie-data:
   mealie-pgdata:
   planner-pgdata:
+

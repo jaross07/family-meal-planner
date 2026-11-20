@@ -69,7 +69,7 @@ const showIngestModal = ref(false)
 const showWeekModal = ref(false)
 const dayModalDate = ref(null)
 
-const mealiePublicUrl = ref(`${window.location.protocol}//${window.location.hostname}`)
+const mealiePublicUrl = ref('https://meals.nobleshrew.com')
 
 function notify(msg) {
   toastMessage.value = msg
