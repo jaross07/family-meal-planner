@@ -131,7 +131,7 @@ async function loadVisibleRangeData() {
   const fromStr = toIso(start)
   const toStr = toIso(end)
 
-  const [attData, ctxList, planData, holData] = await Promise.all([
+  const [attData, ctxList, planData, notesMap, holData] = await Promise.all([
     apiFetch(`/api/attendance?from=${fromStr}&to=${toStr}`),
     apiFetch(`/api/contexts?from=${fromStr}&to=${toStr}`),
     apiFetch(`/api/planned?from=${fromStr}&to=${toStr}`),
