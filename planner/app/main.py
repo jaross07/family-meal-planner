@@ -163,6 +163,8 @@ def health_check():
 async def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)):
     try:
         user_info = await mealie_client.login_and_get_user(payload.username, payload.password)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except MealieAuthError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
     except MealieUnavailableError as exc:

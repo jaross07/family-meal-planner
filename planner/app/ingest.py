@@ -248,7 +248,7 @@ async def commit_recipe_to_mealie(
         get_resp.raise_for_status()
         recipe_doc = get_resp.json()
 
-        recipe_doc["name"] = payload.name.strip()
+        recipe_doc["name"] = recipe_doc.get("name") or payload.name.strip()
         recipe_doc["description"] = payload.description or ""
         recipe_doc["orgURL"] = source_url
         recipe_doc["recipeYield"] = payload.recipe_yield or ""
