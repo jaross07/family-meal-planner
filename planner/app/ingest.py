@@ -169,21 +169,39 @@ async def _ensure_mealie_entity(
     cache_map: dict[str, dict],
     headers: dict[str, str],
 ) -> dict[str, Any]:
-    key = name.strip().lower()
+    clean_name = name.strip()
+    key = clean_name.lower()
     if key in cache_map:
         return cache_map[key]
 
-    resp = await client.post(endpoint, json={"name": name.strip()}, headers=headers)
+    resp = await client.post(endpoint, json={"name": clean_name}, headers=headers)
     if resp.status_code in (200, 201):
         created = resp.json()
         cache_map[key] = created
         return created
 
-    # Re-fetch catalog on conflict (e.g., pluralization match in Mealie)
-    foods_map, units_map = await get_mealie_catalog(headers["Authorization"].removeprefix("Bearer "), force_refresh=True)
-    target_map = foods_map if endpoint == "/api/foods" else units_map
-    if key in target_map:
-        return target_map[key]
+    if resp.status_code == 409:
+        # Mealie detected an existing singular/plural/alias match — fetch it via search
+        search_resp = await client.get(endpoint, params={"search": clean_name, "perPage": 50}, headers=headers)
+        if search_resp.status_code == 200:
+            items = search_resp.json().get("items", [])
+            for item in items:
+                names = {
+                    (item.get("name") or "").strip().lower(),
+                    (item.get("pluralName") or "").strip().lower(),
+                }
+                names.update(
+                    (a.get("name") or "").strip().lower()
+                    for a in (item.get("aliases") or [])
+                    if isinstance(a, dict)
+                )
+                if key in names:
+                    cache_map[key] = item
+                    return item
+            if items:
+                cache_map[key] = items[0]
+                return items[0]
+
     resp.raise_for_status()
     return resp.json()
 
