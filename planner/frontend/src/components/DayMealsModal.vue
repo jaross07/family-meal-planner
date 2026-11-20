@@ -1,14 +1,35 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
   date: String,
   household: Array,
   attendance: Array,
   dayContexts: Object, // { breakfast: {...}, lunch: {...}, dinner: {...} }
+  dayNote: String,
 })
 
-const emit = defineEmits(['close', 'toggle-meal-planned', 'toggle-user-attending'])
+const emit = defineEmits(['close', 'toggle-meal-planned', 'toggle-user-attending', 'save-day-note'])
+
+const noteDraft = ref(props.dayNote || '')
+watch(
+  () => [props.date, props.dayNote],
+  () => {
+    noteDraft.value = props.dayNote || ''
+  }
+)
+
+function commitModalNote() {
+  const trimmed = noteDraft.value.trim()
+  if (trimmed !== (props.dayNote || '').trim()) {
+    emit('save-day-note', props.date, trimmed)
+  }
+}
+
+function closeModal() {
+  commitModalNote()
+  emit('close')
+}
 
 const meals = [
   { key: 'breakfast', label: 'Breakfast' },
@@ -50,7 +71,7 @@ function isAttending(mealKey, userId) {
 </script>
 
 <template>
-  <div class="modal-backdrop" @click.self="emit('close')">
+  <div class="modal-backdrop" @click.self="closeModal">
     <div class="modal-box" style="max-width: 540px">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px">
         <div>
@@ -59,7 +80,20 @@ function isAttending(mealKey, userId) {
             Choose which meals to plan and who will be eating
           </div>
         </div>
-        <button @click="emit('close')">Done</button>
+        <button @click="closeModal">Done</button>
+      </div>
+
+      <div style="margin-bottom: 12px">
+        <label style="display: block; font-size: 0.8rem; font-weight: 600; color: var(--muted); margin-bottom: 4px">
+          📝 Day Notes
+        </label>
+        <textarea
+          v-model="noteDraft"
+          rows="2"
+          placeholder="Add notes for this day..."
+          style="width: 100%; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 0.875rem; font-family: inherit; resize: vertical"
+          @blur="commitModalNote"
+        ></textarea>
       </div>
 
       <div

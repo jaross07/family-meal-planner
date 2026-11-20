@@ -52,6 +52,7 @@ const plannedMeals = ref([])
 const holidaysList = ref([])
 const familyEvents = ref([])
 const contexts = reactive({})
+const dayNotes = reactive({})
 const rules = ref([])
 const hiddenRecipes = ref([])
 const recommendations = ref(null)
@@ -134,10 +135,13 @@ async function loadVisibleRangeData() {
     apiFetch(`/api/attendance?from=${fromStr}&to=${toStr}`),
     apiFetch(`/api/contexts?from=${fromStr}&to=${toStr}`),
     apiFetch(`/api/planned?from=${fromStr}&to=${toStr}`),
+    apiFetch(`/api/day-notes?from=${fromStr}&to=${toStr}`),
     apiFetch(`/api/holidays?from=${fromStr}&to=${toStr}`),
   ])
   attendance.value = attData.items
   plannedMeals.value = planData.items || []
+  for (const k of Object.keys(dayNotes)) delete dayNotes[k]
+  Object.assign(dayNotes, notesMap || {})
   holidaysList.value = holData.items || []
   familyEvents.value = holData.family_events || []
   for (const c of ctxList) {
@@ -264,6 +268,18 @@ async function handleUndo() {
     notify(`Reverted ${res.reverted} attendance entry(s)`)
     await loadVisibleRangeData()
     await loadDayDetails()
+  }
+}
+
+async function handleSaveDayNote(dateIso, noteText) {
+  const res = await apiFetch(`/api/day-notes/${dateIso}`, {
+    method: 'PUT',
+    body: JSON.stringify({ note: noteText }),
+  })
+  if (res.note) {
+    dayNotes[dateIso] = res.note
+  } else {
+    delete dayNotes[dateIso]
   }
 }
 
@@ -630,6 +646,7 @@ onMounted(async () => {
       :meal-type="henleyMealFilter"
       :selected-date="selectedDate"
       :planned-meals="plannedMeals"
+        :day-notes="dayNotes"
       :my-ratings="myRatings"
         :family-notes="familyNotes"
       :my-notes="myNotes"
@@ -671,10 +688,12 @@ onMounted(async () => {
         :my-ratings="myRatings"
         :family-notes="familyNotes"
         :context="contexts[`${selectedDate}:${mealType}`]"
+        :day-note="dayNotes[selectedDate] || ''"
         :mealie-public-url="mealiePublicUrl"
         :loading="loadingRecs"
         :planning-recipe-id="planningRecipeId"
         @update-context="handleUpdateContext"
+        @save-day-note="handleSaveDayNote"
         @rate-recipe="handleRateRecipe"
         @hide-recipe="handleHideRecipe"
         @toggle-recipe-leftover="handleToggleRecipeLeftover"
@@ -692,9 +711,11 @@ onMounted(async () => {
       :household="household"
       :attendance="attendance"
       :day-contexts="modalDayContexts"
+      :day-note="dayNotes[dayModalDate] || ''"
       @close="dayModalDate = null"
       @toggle-meal-planned="handleModalToggleMealPlanned"
       @toggle-user-attending="handleModalToggleUserAttending"
+      @save-day-note="handleSaveDayNote"
     />
 
 

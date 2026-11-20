@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
   selectedDate: String,
@@ -10,6 +10,7 @@ const props = defineProps({
   myRatings: Object,
   familyNotes: Object,
   context: Object,
+  dayNote: String,
   mealiePublicUrl: String,
   loading: Boolean,
   planningRecipeId: String,
@@ -17,6 +18,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   'update-context',
+  'save-day-note',
   'rate-recipe',
   'hide-recipe',
   'plan-recipe',
@@ -28,6 +30,25 @@ const emit = defineEmits([
 ])
 
 const replacingEntry = ref(null)
+const noteDraft = ref(props.dayNote || '')
+const savingNote = ref(false)
+
+watch(
+  () => [props.selectedDate, props.dayNote],
+  () => {
+    noteDraft.value = props.dayNote || ''
+  }
+)
+
+function commitNote() {
+  const trimmed = noteDraft.value.trim()
+  if (trimmed === (props.dayNote || '').trim()) return
+  savingNote.value = true
+  emit('save-day-note', props.selectedDate, trimmed)
+  setTimeout(() => {
+    savingNote.value = false
+  }, 400)
+}
 const brokenImages = ref({})
 
 const formattedDate = computed(() => {
@@ -136,6 +157,22 @@ function chooseRecipe(item) {
           <strong>{{ note.display_name }}</strong>: {{ note.status }}
           <span v-if="note.label"> — {{ note.label }}</span>
         </div>
+      </div>
+
+      <div style="margin-top: 10px">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px">
+          <label style="font-size: 0.78rem; font-weight: 600; color: var(--muted)">📝 Day Notes</label>
+          <span v-if="savingNote" style="font-size: 0.72rem; color: var(--success)">Saved</span>
+        </div>
+        <textarea
+          v-model="noteDraft"
+          rows="2"
+          placeholder="Add notes for this day..."
+          style="width: 100%; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 0.84rem; font-family: inherit; resize: vertical"
+          @blur="commitNote"
+          @keydown.ctrl.enter="commitNote"
+          @keydown.meta.enter="commitNote"
+        ></textarea>
       </div>
 
       <div class="toggle-row">

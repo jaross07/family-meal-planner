@@ -172,3 +172,13 @@ class FamilyEvent(Base):
     day: Mapped[int] = mapped_column(Integer, nullable=False)
     label: Mapped[str] = mapped_column(String(120), nullable=False)
     emoji: Mapped[str] = mapped_column(String(16), default="🎉", nullable=False)
+
+
+class DayNote(Base):
+    __tablename__ = "day_notes"
+
+    date: Mapped[date] = mapped_column(Date, primary_key=True)
+    note: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )

@@ -12,6 +12,7 @@ const props = defineProps({
   household: Array,
   contexts: Object,
   plannedMeals: Array,
+  dayNotes: Object,
   holidays: Array,
   undoAvailable: Boolean,
 })
@@ -393,6 +394,7 @@ function badgeStyle(entry) {
             {{ cell.dayNum }}
           </span>
           <span class="ctx-icons">
+            <span v-if="dayNotes?.[cell.iso]" :title="dayNotes[cell.iso]">📝</span>
             <span v-if="!isDayMealPlanned(cell.iso)" title="Meal not planned">🚫</span>
             <span v-if="contexts[`${cell.iso}:${mealType}`]?.max_prep_time" title="Fast & Easy">⚡</span>
             <span v-if="contexts[`${cell.iso}:${mealType}`]?.require_leftovers" title="Make Extra">🍱</span>

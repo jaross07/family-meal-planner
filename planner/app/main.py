@@ -25,6 +25,7 @@ from app.auth import (
 from app.database import SessionLocal, get_db
 from app.mealie_client import MealieAuthError, MealieUnavailableError, mealie_client
 from app.models import (
+    DayNote,
     MealAttendance,
     FamilyEvent,
     MealContext,
@@ -632,6 +633,49 @@ def add_rule_exception(
 
 
 # --- Day Context, Recipe Meta & Leftover Chains ---
+
+class DayNoteUpdateRequest(BaseModel):
+    note: str = Field(default="", max_length=2000)
+
+
+@app.get("/api/day-notes")
+def list_day_notes(
+    from_date: date = Query(..., alias="from"),
+    to_date: date = Query(..., alias="to"),
+    _: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.query(DayNote)
+        .filter(DayNote.date >= from_date, DayNote.date <= to_date, DayNote.note != "")
+        .all()
+    )
+    return {row.date.isoformat(): row.note for row in rows}
+
+
+@app.put("/api/day-notes/{target_date}")
+def upsert_day_note(
+    target_date: date,
+    payload: DayNoteUpdateRequest,
+    _: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    cleaned = payload.note.strip()
+    row = db.get(DayNote, target_date)
+    if not cleaned:
+        if row is not None:
+            db.delete(row)
+            db.commit()
+        return {"date": target_date.isoformat(), "note": ""}
+
+    if row is None:
+        row = DayNote(date=target_date, note=cleaned)
+        db.add(row)
+    else:
+        row.note = cleaned
+    db.commit()
+    return {"date": target_date.isoformat(), "note": row.note}
+
 
 @app.get("/api/contexts")
 def get_meal_contexts_range(
