@@ -18,6 +18,20 @@ async def sync_recipes_from_mealie(db: Session) -> dict:
         )
 
     fetched = await mealie_client.fetch_all_recipes()
+    try:
+        mealie_cats = await mealie_client.fetch_categories_with_recipes()
+    except Exception:
+        mealie_cats = []
+
+    cats_by_recipe_id: dict[str, list[str]] = {}
+    for cat in mealie_cats:
+        cname = cat["name"]
+        for rid in cat.get("recipe_ids", []):
+            cats_by_recipe_id.setdefault(rid, []).append(cname)
+
+    for item in fetched:
+        merged = list(dict.fromkeys([*(item.get("categories") or []), *cats_by_recipe_id.get(item["mealie_recipe_id"], [])]))
+        item["categories"] = merged
     now = datetime.now(timezone.utc)
     seen_ids: set[str] = set()
 

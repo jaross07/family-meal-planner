@@ -852,11 +852,11 @@ def create_leftover_chain(
 # --- Recommendations, Mealie Write-Back & Sync ---
 
 @app.get("/api/categories")
-def list_recipe_categories(
+async def list_recipe_categories(
     _: dict = Depends(get_current_session),
     db: Session = Depends(get_db),
 ):
-    """Return sorted distinct Mealie recipe categories from active cached recipes."""
+    """Return sorted distinct Mealie recipe categories from cached recipes and Mealie organizers."""
     rows = db.query(RecipeCache.categories).filter(RecipeCache.active.is_(True)).all()
     seen: dict[str, str] = {}
     for (cats,) in rows:
@@ -864,6 +864,14 @@ def list_recipe_categories(
             cleaned = (c or "").strip()
             if cleaned and cleaned.lower() not in seen:
                 seen[cleaned.lower()] = cleaned
+    try:
+        mealie_cats = await mealie_client.fetch_categories_with_recipes()
+        for cat in mealie_cats:
+            cleaned = (cat.get("name") or "").strip()
+            if cleaned and cleaned.lower() not in seen:
+                seen[cleaned.lower()] = cleaned
+    except Exception:
+        pass
     return {"items": sorted(seen.values(), key=lambda s: s.lower())}
 
 

@@ -154,6 +154,51 @@ class MealieClient:
 
         return recipes
 
+    async def fetch_categories_with_recipes(self) -> list[dict]:
+        """Fetch all categories (and their recipe IDs) from Mealie's organizer API."""
+        async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
+            try:
+                resp = await client.get(
+                    "/api/organizers/categories",
+                    params={"perPage": 500},
+                    headers=self._headers(),
+                )
+            except httpx.RequestError as exc:
+                raise MealieUnavailableError("Unable to fetch categories from Mealie") from exc
+
+            if resp.status_code >= 500:
+                raise MealieUnavailableError(f"Mealie categories error: {resp.status_code}")
+            resp.raise_for_status()
+
+            payload = resp.json()
+            items = payload.get("items", payload) if isinstance(payload, dict) else payload
+            categories_out: list[dict] = []
+            for cat in items:
+                if not isinstance(cat, dict):
+                    continue
+                cat_id = cat.get("id")
+                cat_name = (cat.get("name") or "").strip()
+                if not cat_name:
+                    continue
+                recipe_ids: list[str] = [
+                    str(r["id"]) for r in (cat.get("recipes") or []) if isinstance(r, dict) and r.get("id")
+                ]
+                # Mealie's list endpoint sometimes omits nested recipes; fetch detail if empty
+                if not recipe_ids and cat_id:
+                    detail_resp = await client.get(
+                        f"/api/organizers/categories/{cat_id}",
+                        headers=self._headers(),
+                    )
+                    if detail_resp.status_code == 200:
+                        detail = detail_resp.json()
+                        recipe_ids = [
+                            str(r["id"])
+                            for r in (detail.get("recipes") or [])
+                            if isinstance(r, dict) and r.get("id")
+                        ]
+                categories_out.append({"id": str(cat_id or ""), "name": cat_name, "recipe_ids": recipe_ids})
+            return categories_out
+
     async def get_planned_meals(self, start_date: date, end_date: date, user_token: str | None = None) -> list[dict]:
         """Fetch planned meals in a date window (used to check recent parent recipes for leftover chains)."""
         async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
@@ -180,14 +225,15 @@ class MealieClient:
             for entry in items:
                 recipe = entry.get("recipe") or {}
                 recipe_id = entry.get("recipeId") or recipe.get("id")
-                if recipe_id and entry.get("date"):
+                title = (recipe.get("name") or entry.get("title") or "").strip()
+                if (recipe_id or title) and entry.get("date"):
                     planned.append(
                         {
                             "id": str(entry.get("id", "")),
                             "date": datetime.strptime(entry["date"][:10], "%Y-%m-%d").date(),
                             "entry_type": entry.get("entryType", "dinner"),
-                            "recipe_id": str(recipe_id),
-                            "recipe_name": recipe.get("name", "") or entry.get("title", ""),
+                            "recipe_id": str(recipe_id) if recipe_id else "",
+                            "recipe_name": title or "Planned Meal",
                             "slug": recipe.get("slug", ""),
                         }
                     )
