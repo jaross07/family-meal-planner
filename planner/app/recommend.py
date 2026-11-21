@@ -22,6 +22,7 @@ async def generate_recommendations(
     page_size: int = 20,
     include_vetoed: bool = False,
     user_token: str | None = None,
+    q: str | None = None,
 ) -> dict:
     """
     Compute ranked recipe recommendations for the diners eating on (target_date, meal_type).
@@ -214,6 +215,15 @@ async def generate_recommendations(
     scored_items.sort(key=lambda item: item["_sort_key"])
     for item in scored_items:
         item.pop("_sort_key", None)
+
+    search_term = (q or "").strip().lower()
+    if search_term:
+        scored_items = [
+            item for item in scored_items
+            if search_term in (item["name"] or "").lower()
+            or any(search_term in (t or "").lower() for t in (item.get("tags") or []))
+        ]
+        page_size = max(page_size, len(scored_items) or 1)
 
     total = len(scored_items)
     start_idx = max(0, (page - 1) * page_size)

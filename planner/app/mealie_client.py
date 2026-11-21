@@ -191,7 +191,7 @@ class MealieClient:
         self,
         plan_date: date,
         entry_type: str,
-        recipe_id: str,
+        recipe_id: str | None,
         user_token: str,
         title: str = "",
     ) -> dict:
