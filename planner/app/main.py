@@ -851,6 +851,22 @@ def create_leftover_chain(
 
 # --- Recommendations, Mealie Write-Back & Sync ---
 
+@app.get("/api/categories")
+def list_recipe_categories(
+    _: dict = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    """Return sorted distinct Mealie recipe categories from active cached recipes."""
+    rows = db.query(RecipeCache.categories).filter(RecipeCache.active.is_(True)).all()
+    seen: dict[str, str] = {}
+    for (cats,) in rows:
+        for c in cats or []:
+            cleaned = (c or "").strip()
+            if cleaned and cleaned.lower() not in seen:
+                seen[cleaned.lower()] = cleaned
+    return {"items": sorted(seen.values(), key=lambda s: s.lower())}
+
+
 @app.get("/api/recommendations")
 async def get_recommendations(
     target_date: date = Query(..., alias="date"),
@@ -858,6 +874,7 @@ async def get_recommendations(
     page: int = Query(default=1, ge=1),
     include_vetoed: bool = Query(default=False),
     q: str | None = Query(default=None, max_length=120),
+    category: str | None = Query(default=None, max_length=120),
     session: dict = Depends(get_current_session),
     db: Session = Depends(get_db),
 ):
@@ -869,6 +886,7 @@ async def get_recommendations(
         include_vetoed=include_vetoed,
         user_token=session["mealie_token"],
         q=q,
+        category=category,
     )
 
 

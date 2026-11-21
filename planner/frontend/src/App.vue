@@ -98,7 +98,7 @@ async function loadInitialData() {
   viewMode.value = prof.current_user.calendar_view || 'month'
   appMode.value = prof.current_user.default_view || 'planner'
   authenticated.value = true
-  await Promise.all([loadVisibleRangeData(), loadRules(), loadDayDetails(), loadRatings(), loadHiddenRecipes()])
+  await Promise.all([loadVisibleRangeData(), loadRules(), loadDayDetails(), loadRatings(), loadHiddenRecipes(), loadCategories()])
 }
 
 async function handleLogin() {
@@ -153,26 +153,43 @@ async function loadRules() {
   rules.value = await apiFetch('/api/rules')
 }
 
+async function loadCategories() {
+  try {
+    const res = await apiFetch('/api/categories')
+    recipeCategories.value = res.items || []
+  } catch (_) {
+    recipeCategories.value = []
+  }
+}
+
 async function loadHiddenRecipes() {
   const res = await apiFetch('/api/recipes/hidden')
   hiddenRecipes.value = res.items || []
 }
 
 const recipeSearchQuery = ref('')
+const selectedCategory = ref('')
+const recipeCategories = ref([])
 
-async function loadDayDetails(includeVetoed = false, searchOverride = null) {
+async function loadDayDetails(includeVetoed = false, searchOverride = null, categoryOverride = null) {
   if (searchOverride !== null) {
     recipeSearchQuery.value = searchOverride
+  }
+  if (categoryOverride !== null) {
+    selectedCategory.value = categoryOverride
   }
   loadingRecs.value = true
   try {
     const qParam = recipeSearchQuery.value.trim()
       ? `&q=${encodeURIComponent(recipeSearchQuery.value.trim())}`
       : ''
+    const catParam = selectedCategory.value.trim()
+      ? `&category=${encodeURIComponent(selectedCategory.value.trim())}`
+      : ''
     const [ctx, recs] = await Promise.all([
       apiFetch(`/api/context?date=${selectedDate.value}&meal_type=${mealType.value}`),
       apiFetch(
-        `/api/recommendations?date=${selectedDate.value}&meal_type=${mealType.value}&include_vetoed=${includeVetoed}${qParam}`
+        `/api/recommendations?date=${selectedDate.value}&meal_type=${mealType.value}&include_vetoed=${includeVetoed}${qParam}${catParam}`
       ),
     ])
     contexts[`${selectedDate.value}:${mealType.value}`] = ctx
@@ -703,7 +720,10 @@ onMounted(async () => {
         :loading="loadingRecs"
         :planning-recipe-id="planningRecipeId"
         :search-query="recipeSearchQuery"
-        @search-recipes="(q) => loadDayDetails(false, q)"
+        :categories="recipeCategories"
+        :selected-category="selectedCategory"
+        @search-recipes="(q) => loadDayDetails(false, q, null)"
+        @select-category="(cat) => loadDayDetails(false, null, cat)"
         @update-context="handleUpdateContext"
         @save-day-note="handleSaveDayNote"
         @rate-recipe="handleRateRecipe"

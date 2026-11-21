@@ -124,6 +124,11 @@ class MealieClient:
                 items = payload.get("items", [])
                 for item in items:
                     tags = [t.get("name", "") for t in item.get("tags", []) if isinstance(t, dict)]
+                    categories = [
+                        c.get("name", "")
+                        for c in (item.get("recipeCategory") or [])
+                        if isinstance(c, dict)
+                    ]
                     total_time = _parse_duration_minutes(item.get("totalTime"))
                     prep_time = _parse_duration_minutes(item.get("prepTime"))
                     perform_time = _parse_duration_minutes(item.get("performTime"))
@@ -137,6 +142,7 @@ class MealieClient:
                             "slug": item.get("slug", ""),
                             "name": item.get("name", "Untitled Recipe"),
                             "tags": [t for t in tags if t],
+                            "categories": [c for c in categories if c],
                             "prep_time_minutes": resolved_minutes,
                         }
                     )

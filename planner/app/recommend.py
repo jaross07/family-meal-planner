@@ -23,6 +23,7 @@ async def generate_recommendations(
     include_vetoed: bool = False,
     user_token: str | None = None,
     q: str | None = None,
+    category: str | None = None,
 ) -> dict:
     """
     Compute ranked recipe recommendations for the diners eating on (target_date, meal_type).
@@ -158,6 +159,13 @@ async def generate_recommendations(
         prep_minutes = meta.prep_time_minutes if meta else None
         leftover_yield = meta.leftover_yield if meta else False
 
+        # 1b. Mealie Category filter (honored alongside Fast & Easy and Make Extra)
+        cat_filter = (category or "").strip().lower()
+        if cat_filter:
+            recipe_cats = [c.strip().lower() for c in (getattr(recipe, "categories", None) or [])]
+            if cat_filter not in recipe_cats:
+                continue
+
         # 2. Time constraint filtering (Fast & Easy days)
         if max_prep_time is not None:
             if prep_minutes is None or prep_minutes > max_prep_time:
@@ -183,6 +191,7 @@ async def generate_recommendations(
                 "slug": recipe.slug,
                 "name": recipe.name,
                 "tags": recipe.tags,
+                "categories": getattr(recipe, "categories", None) or [],
                 "score": round(final_score, 3),
                 "base_rating_avg": round(avg_score, 3),
                 "is_vetoed": is_vetoed,

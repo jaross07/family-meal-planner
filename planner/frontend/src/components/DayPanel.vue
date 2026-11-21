@@ -15,6 +15,8 @@ const props = defineProps({
   loading: Boolean,
   planningRecipeId: String,
   searchQuery: { type: String, default: '' },
+  categories: { type: Array, default: () => [] },
+  selectedCategory: { type: String, default: '' },
 })
 
 const emit = defineEmits([
@@ -24,6 +26,7 @@ const emit = defineEmits([
   'hide-recipe',
   'plan-recipe',
   'search-recipes',
+  'select-category',
   'remove-planned',
   'replace-planned',
   'show-vetoed',
@@ -125,6 +128,36 @@ function recipeImageUrl(recipeId) {
   return `/api/recipes/${recipeId}/image`
 }
 
+const shuffleSeed = ref(0)
+
+function shuffleRecipes() {
+  shuffleSeed.value += 1
+}
+
+function hashSeed(str) {
+  let h = 2166136261
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return h >>> 0
+}
+
+const displayedItems = computed(() => {
+  const list = [...(props.recommendations?.items || [])]
+  if (list.length <= 1) return list
+  // Keep active leftover-chain boosts pinned at the top, shuffle the rest
+  const boosted = list.filter((i) => Boolean(i.leftover_badge))
+  const regular = list.filter((i) => !i.leftover_badge)
+  let seed = hashSeed(`${props.selectedDate || ''}:${props.mealType || ''}:${shuffleSeed.value}`)
+  for (let i = regular.length - 1; i > 0; i--) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+    const j = seed % (i + 1)
+    ;[regular[i], regular[j]] = [regular[j], regular[i]]
+  }
+  return [...boosted, ...regular]
+})
+
 const showCustomInput = ref(false)
 const customMealTitle = ref('')
 const localSearch = ref(props.searchQuery || '')
@@ -218,6 +251,31 @@ function chooseRecipe(item) {
           @keydown.ctrl.enter="commitNote"
           @keydown.meta.enter="commitNote"
         ></textarea>
+      </div>
+
+      <hr style="border: 0; border-top: 1px solid var(--border); margin: 12px 0 10px" />
+
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; flex-wrap: wrap">
+        <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px">
+          <span style="font-size: 0.92rem; font-weight: 700">Recipes:</span>
+          <select
+            :value="selectedCategory"
+            aria-label="Filter by Mealie category"
+            style="flex: 1; min-width: 120px; font-size: 0.82rem; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border)"
+            @change="emit('select-category', $event.target.value)"
+          >
+            <option value="">All Categories</option>
+            <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
+          </select>
+        </div>
+        <button
+          type="button"
+          title="Shuffle recipe order"
+          style="padding: 4px 9px; font-size: 0.8rem"
+          @click="shuffleRecipes"
+        >
+          🔀 Shuffle
+        </button>
       </div>
 
       <div class="toggle-row">
@@ -415,7 +473,7 @@ function chooseRecipe(item) {
     </div>
 
     <div v-else>
-      <div v-for="item in recommendations.items" :key="item.mealie_recipe_id" class="recipe-item">
+      <div v-for="item in displayedItems" :key="item.mealie_recipe_id" class="recipe-item">
         <div style="display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px">
           <img
             v-if="!brokenImages[item.mealie_recipe_id]"
