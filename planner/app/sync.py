@@ -49,6 +49,7 @@ async def sync_recipes_from_mealie(db: Session) -> dict:
                 slug=item["slug"],
                 name=item["name"],
                 tags=item["tags"],
+                categories=item.get("categories", []),
                 last_seen_at=now,
                 active=True,
             )
@@ -58,6 +59,7 @@ async def sync_recipes_from_mealie(db: Session) -> dict:
             cached.slug = item["slug"]
             cached.name = item["name"]
             cached.tags = item["tags"]
+            cached.categories = item.get("categories", [])
             cached.last_seen_at = now
             cached.active = True
             updated_count += 1
