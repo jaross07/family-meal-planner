@@ -14,6 +14,7 @@ const props = defineProps({
   mealiePublicUrl: String,
   loading: Boolean,
   planningRecipeId: String,
+  searchQuery: { type: String, default: '' },
 })
 
 const emit = defineEmits([
@@ -22,6 +23,7 @@ const emit = defineEmits([
   'rate-recipe',
   'hide-recipe',
   'plan-recipe',
+  'search-recipes',
   'remove-planned',
   'replace-planned',
   'show-vetoed',
@@ -123,6 +125,49 @@ function recipeImageUrl(recipeId) {
   return `/api/recipes/${recipeId}/image`
 }
 
+const showCustomInput = ref(false)
+const customMealTitle = ref('')
+const localSearch = ref(props.searchQuery || '')
+let searchDebounceTimer = null
+
+watch(
+  () => props.searchQuery,
+  (val) => {
+    if ((val || '') !== localSearch.value) {
+      localSearch.value = val || ''
+    }
+  }
+)
+
+watch(
+  () => [props.selectedDate, props.mealType],
+  () => {
+    showCustomInput.value = false
+    customMealTitle.value = ''
+  }
+)
+
+function onSearchInput() {
+  clearTimeout(searchDebounceTimer)
+  searchDebounceTimer = setTimeout(() => {
+    emit('search-recipes', localSearch.value)
+  }, 220)
+}
+
+function clearSearch() {
+  clearTimeout(searchDebounceTimer)
+  localSearch.value = ''
+  emit('search-recipes', '')
+}
+
+function submitCustomMeal(presetTitle = null) {
+  const title = (presetTitle !== null ? presetTitle : customMealTitle.value).trim()
+  if (!title) return
+  chooseRecipe({ mealie_recipe_id: null, name: title })
+  customMealTitle.value = ''
+  showCustomInput.value = false
+}
+
 function chooseRecipe(item) {
   if (replacingEntry.value) {
     emit('replace-planned', replacingEntry.value, item)
@@ -204,6 +249,82 @@ function chooseRecipe(item) {
         >
           👑 Henley's Choice
         </button>
+        <button
+          type="button"
+          class="toggle-chip"
+          :class="{ active: showCustomInput }"
+          @click="showCustomInput = !showCustomInput"
+        >
+          ✏️ Pencil In Meal
+        </button>
+      </div>
+
+      <!-- Inline Pencil-In Custom Meal Box -->
+      <div
+        v-if="showCustomInput"
+        style="margin-top: 8px; padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fafc"
+      >
+        <div style="display: flex; gap: 6px; margin-bottom: 6px">
+          <input
+            v-model="customMealTitle"
+            type="text"
+            placeholder="e.g., Eating leftovers, Grilling burgers..."
+            style="flex: 1; font-size: 0.85rem"
+            @keyup.enter="submitCustomMeal()"
+          />
+          <button
+            type="button"
+            class="primary"
+            style="padding: 5px 10px; font-size: 0.82rem"
+            :disabled="!customMealTitle.trim() || planningRecipeId === '__custom__'"
+            @click="submitCustomMeal()"
+          >
+            Add
+          </button>
+        </div>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap">
+          <button
+            type="button"
+            style="padding: 2px 8px; font-size: 0.75rem"
+            @click="submitCustomMeal('Eating Leftovers')"
+          >
+            ♻ Eating Leftovers
+          </button>
+          <button
+            type="button"
+            style="padding: 2px 8px; font-size: 0.75rem"
+            @click="submitCustomMeal(&quot;Henley's Choice&quot;)"
+          >
+            👑 Henley's Choice
+          </button>
+          <button
+            type="button"
+            style="padding: 2px 8px; font-size: 0.75rem"
+            @click="submitCustomMeal('Takeout / Eating Out')"
+          >
+            🍕 Takeout / Eating Out
+          </button>
+        </div>
+      </div>
+
+      <!-- Filter-Aware Recipe Search Bar -->
+      <div style="margin-top: 10px; position: relative; display: flex; align-items: center">
+        <input
+          v-model="localSearch"
+          type="search"
+          placeholder="🔍 Search recipes (honors active filters)..."
+          style="width: 100%; padding-right: 28px; font-size: 0.85rem"
+          @input="onSearchInput"
+        />
+        <button
+          v-if="localSearch"
+          type="button"
+          title="Clear search"
+          style="position: absolute; right: 4px; border: none; background: transparent; padding: 2px 6px; font-size: 0.9rem; color: var(--muted)"
+          @click="clearSearch"
+        >
+          ✕
+        </button>
       </div>
     </div>
 
@@ -219,7 +340,7 @@ function chooseRecipe(item) {
         style="border: 1px solid #86efac; background: #f0fdf4; border-radius: 8px; padding: 8px; margin-bottom: 6px; display: flex; gap: 10px; align-items: center"
       >
         <img
-          v-if="!brokenImages[entry.mealie_recipe_id]"
+          v-if="entry.mealie_recipe_id && !brokenImages[entry.mealie_recipe_id]"
           :src="recipeImageUrl(entry.mealie_recipe_id)"
           alt=""
           style="width: 52px; height: 52px; object-fit: cover; border-radius: 6px; flex-shrink: 0"

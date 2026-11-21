@@ -158,13 +158,21 @@ async function loadHiddenRecipes() {
   hiddenRecipes.value = res.items || []
 }
 
-async function loadDayDetails(includeVetoed = false) {
+const recipeSearchQuery = ref('')
+
+async function loadDayDetails(includeVetoed = false, searchOverride = null) {
+  if (searchOverride !== null) {
+    recipeSearchQuery.value = searchOverride
+  }
   loadingRecs.value = true
   try {
+    const qParam = recipeSearchQuery.value.trim()
+      ? `&q=${encodeURIComponent(recipeSearchQuery.value.trim())}`
+      : ''
     const [ctx, recs] = await Promise.all([
       apiFetch(`/api/context?date=${selectedDate.value}&meal_type=${mealType.value}`),
       apiFetch(
-        `/api/recommendations?date=${selectedDate.value}&meal_type=${mealType.value}&include_vetoed=${includeVetoed}`
+        `/api/recommendations?date=${selectedDate.value}&meal_type=${mealType.value}&include_vetoed=${includeVetoed}${qParam}`
       ),
     ])
     contexts[`${selectedDate.value}:${mealType.value}`] = ctx
@@ -450,14 +458,15 @@ async function handleDeleteFamilyEvent(eventId) {
 }
 
 async function handlePlanRecipe(item) {
-  planningRecipeId.value = item.mealie_recipe_id
+  planningRecipeId.value = item.mealie_recipe_id || '__custom__'
   try {
     await apiFetch('/api/plan', {
       method: 'POST',
       body: JSON.stringify({
         date: selectedDate.value,
         meal_type: mealType.value,
-        mealie_recipe_id: item.mealie_recipe_id,
+        mealie_recipe_id: item.mealie_recipe_id || null,
+        title: item.name,
       }),
     })
     mealieUnavailable.value = false
@@ -537,6 +546,7 @@ async function handleUpdatePreferences(payload) {
 }
 
 watch([selectedDate, mealType], () => {
+  recipeSearchQuery.value = ''
   if (authenticated.value) loadDayDetails()
 })
 
@@ -692,6 +702,8 @@ onMounted(async () => {
         :mealie-public-url="mealiePublicUrl"
         :loading="loadingRecs"
         :planning-recipe-id="planningRecipeId"
+        :search-query="recipeSearchQuery"
+        @search-recipes="(q) => loadDayDetails(false, q)"
         @update-context="handleUpdateContext"
         @save-day-note="handleSaveDayNote"
         @rate-recipe="handleRateRecipe"
