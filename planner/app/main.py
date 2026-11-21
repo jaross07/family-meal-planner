@@ -153,7 +153,8 @@ class LeftoverChainCreateRequest(BaseModel):
 class PlanMealRequest(BaseModel):
     date: date
     meal_type: str = Field(default="dinner", pattern=r"^(breakfast|lunch|dinner)$")
-    mealie_recipe_id: str
+    mealie_recipe_id: str | None = None
+    title: str | None = Field(default=None, max_length=200)
 
 
 # --- Health & Auth ---
@@ -856,6 +857,7 @@ async def get_recommendations(
     meal_type: str = Query(default="dinner", pattern=r"^(breakfast|lunch|dinner)$"),
     page: int = Query(default=1, ge=1),
     include_vetoed: bool = Query(default=False),
+    q: str | None = Query(default=None, max_length=120),
     session: dict = Depends(get_current_session),
     db: Session = Depends(get_db),
 ):
@@ -866,6 +868,7 @@ async def get_recommendations(
         page=page,
         include_vetoed=include_vetoed,
         user_token=session["mealie_token"],
+        q=q,
     )
 
 
@@ -875,8 +878,13 @@ async def plan_meal_in_mealie(
     session: dict = Depends(get_current_session),
     db: Session = Depends(get_db),
 ):
-    recipe = db.get(RecipeCache, payload.mealie_recipe_id)
-    title = recipe.name if recipe else ""
+    recipe = db.get(RecipeCache, payload.mealie_recipe_id) if payload.mealie_recipe_id else None
+    title = (payload.title or "").strip() or (recipe.name if recipe else "")
+    if not payload.mealie_recipe_id and not title:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Provide either a recipe or a custom meal title.",
+        )
     try:
         created = await mealie_client.create_meal_plan_entry(
             plan_date=payload.date,

@@ -311,7 +311,7 @@ function chooseRecipe(item) {
       <div style="margin-top: 10px; position: relative; display: flex; align-items: center">
         <input
           v-model="localSearch"
-          type="search"
+          type="text"
           placeholder="🔍 Search recipes (honors active filters)..."
           style="width: 100%; padding-right: 28px; font-size: 0.85rem"
           @input="onSearchInput"
