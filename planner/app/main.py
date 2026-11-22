@@ -1,6 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 import logging
 from pathlib import Path
 import uuid
@@ -25,6 +25,8 @@ from app.auth import (
 from app.database import SessionLocal, get_db
 from app.mealie_client import MealieAuthError, MealieUnavailableError, mealie_client
 from app.models import (
+    ItemPreference,
+    ShoppingListItem,
     DayNote,
     MealAttendance,
     FamilyEvent,
@@ -40,6 +42,17 @@ from app.models import (
 from app.recommend import generate_recommendations
 from app.rules import resolve_attendance_range
 from app.ingest import ParsedRecipePayload, commit_recipe_to_mealie, preview_recipe_from_url
+from app.shopping import (
+    CATEGORIES,
+    DEFAULT_CATEGORY,
+    DEFAULT_STORE,
+    STORES,
+    get_planned_meals_for_import,
+    import_recipes_to_shopping_list,
+    normalize_item_name,
+    remember_item_preference,
+    resolve_store_and_category,
+)
 from app.sync import sync_recipes_from_mealie
 
 logger = logging.getLogger("planner")
@@ -1314,6 +1327,206 @@ def delete_family_event(
     db.delete(ev)
     db.commit()
     return {"status": "deleted", "id": event_id}
+
+
+# --- Shopping List ---
+
+class ShoppingItemCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    quantity: float | None = Field(default=None, gt=0)
+    unit: str | None = Field(default=None, max_length=64)
+    note: str | None = Field(default=None, max_length=255)
+    store: str | None = Field(default=None, max_length=64)
+    category: str | None = Field(default=None, max_length=64)
+
+
+class ShoppingItemUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    quantity: float | None = None
+    unit: str | None = None
+    note: str | None = None
+    store: str | None = None
+    category: str | None = None
+    checked: bool | None = None
+
+
+class ShoppingImportSelection(BaseModel):
+    date: str
+    meal_type: str = "dinner"
+    recipe_id: str = ""
+    slug: str = ""
+    recipe_name: str = ""
+
+
+class ShoppingImportRequest(BaseModel):
+    selections: list[ShoppingImportSelection]
+
+
+def _serialize_shopping_item(item: ShoppingListItem) -> dict:
+    return {
+        "id": item.id,
+        "name": item.name,
+        "normalized_name": item.normalized_name,
+        "quantity": item.quantity,
+        "unit": item.unit,
+        "note": item.note,
+        "category": item.category,
+        "store": item.store,
+        "checked": item.checked,
+        "source_recipes": item.source_recipes or [],
+    }
+
+
+@app.get("/api/shopping")
+def get_shopping_list(
+    _: dict = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    items = (
+        db.query(ShoppingListItem)
+        .order_by(ShoppingListItem.checked.asc(), ShoppingListItem.id.asc())
+        .all()
+    )
+    return {
+        "stores": STORES,
+        "categories": CATEGORIES,
+        "default_store": DEFAULT_STORE,
+        "default_category": DEFAULT_CATEGORY,
+        "items": [_serialize_shopping_item(i) for i in items],
+    }
+
+
+@app.get("/api/shopping/lookup")
+def lookup_shopping_item_defaults(
+    name: str = Query(..., min_length=1),
+    _: dict = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    norm = normalize_item_name(name)
+    store, category = resolve_store_and_category(db, norm)
+    return {"normalized_name": norm, "store": store, "category": category}
+
+
+@app.post("/api/shopping/items")
+def create_shopping_item(
+    payload: ShoppingItemCreate,
+    _: dict = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    cleaned_name = payload.name.strip()
+    norm = normalize_item_name(cleaned_name)
+    store, category = resolve_store_and_category(db, norm, payload.store, payload.category)
+    remember_item_preference(db, norm, store, category)
+
+    item = ShoppingListItem(
+        name=cleaned_name,
+        normalized_name=norm,
+        quantity=payload.quantity,
+        unit=(payload.unit or "").strip() or None,
+        note=(payload.note or "").strip() or None,
+        store=store,
+        category=category,
+        checked=False,
+        source_recipes=[],
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return _serialize_shopping_item(item)
+
+
+@app.patch("/api/shopping/items/{item_id}")
+def update_shopping_item(
+    item_id: int,
+    payload: ShoppingItemUpdate,
+    _: dict = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    item = db.get(ShoppingListItem, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Shopping item not found")
+
+    if payload.name is not None:
+        item.name = payload.name.strip()
+        item.normalized_name = normalize_item_name(item.name)
+    if payload.quantity is not None:
+        item.quantity = payload.quantity if payload.quantity > 0 else None
+    if payload.unit is not None:
+        item.unit = payload.unit.strip() or None
+    if payload.note is not None:
+        item.note = payload.note.strip() or None
+    if payload.store is not None and payload.store in STORES:
+        item.store = payload.store
+    if payload.category is not None and payload.category in CATEGORIES:
+        item.category = payload.category
+    if payload.checked is not None:
+        item.checked = payload.checked
+        item.checked_at = datetime.now(timezone.utc) if payload.checked else None
+
+    if payload.store is not None or payload.category is not None:
+        remember_item_preference(db, item.normalized_name, item.store, item.category)
+
+    db.commit()
+    db.refresh(item)
+    return _serialize_shopping_item(item)
+
+
+@app.delete("/api/shopping/items/{item_id}")
+def delete_shopping_item(
+    item_id: int,
+    _: dict = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    item = db.get(ShoppingListItem, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Shopping item not found")
+    db.delete(item)
+    db.commit()
+    return {"status": "deleted", "id": item_id}
+
+
+@app.delete("/api/shopping/checked")
+def clear_checked_shopping_items(
+    store: str | None = Query(default=None),
+    _: dict = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    q = db.query(ShoppingListItem).filter(ShoppingListItem.checked.is_(True))
+    if store and store in STORES:
+        q = q.filter(ShoppingListItem.store == store)
+    deleted = q.delete(synchronize_session=False)
+    db.commit()
+    return {"status": "cleared", "deleted": deleted}
+
+
+@app.get("/api/shopping/mealplan-preview")
+async def preview_mealplan_for_shopping(
+    from_date: date = Query(..., alias="from"),
+    to_date: date = Query(..., alias="to"),
+    _: dict = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    try:
+        meals = await get_planned_meals_for_import(db, from_date, to_date)
+    except MealieUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"from": from_date.isoformat(), "to": to_date.isoformat(), "meals": meals}
+
+
+@app.post("/api/shopping/import-mealplan")
+async def import_mealplan_to_shopping(
+    payload: ShoppingImportRequest,
+    _: dict = Depends(get_current_session),
+    db: Session = Depends(get_db),
+):
+    try:
+        result = await import_recipes_to_shopping_list(
+            db,
+            [s.model_dump() for s in payload.selections],
+        )
+    except MealieUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"status": "imported", **result}
 
 
 @app.post("/api/sync")

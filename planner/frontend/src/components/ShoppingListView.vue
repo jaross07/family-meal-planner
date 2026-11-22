@@ -22,10 +22,9 @@ const categories = ref([
 const items = ref([])
 const loading = ref(false)
 const activeStoreFilter = ref('ALL')
-const groupMode = ref('category') // 'category' | 'store_category' | 'store'
+const groupMode = ref('category')
 const showChecked = ref(true)
 
-// Quick-add state
 const newItem = reactive({
   name: '',
   quantity: '',
@@ -37,7 +36,6 @@ const userOverrodeStore = ref(false)
 const userOverrodeCategory = ref(false)
 let lookupTimer = null
 
-// Meal plan importer drawer state
 const showImporter = ref(false)
 const importFrom = ref('')
 const importTo = ref('')
@@ -272,7 +270,6 @@ const groupedActiveSections = computed(() => {
         out.push({
           key: `cat:${cat}`,
           title: cat,
-          subtitle: null,
           rows: [...rows].sort((a, b) => a.name.localeCompare(b.name)),
         })
       }
@@ -288,7 +285,6 @@ const groupedActiveSections = computed(() => {
         out.push({
           key: `store:${st}`,
           title: st,
-          subtitle: null,
           rows: sortByCategoryOrder(rows),
         })
       }
@@ -296,7 +292,6 @@ const groupedActiveSections = computed(() => {
     return out
   }
 
-  // 'store_category'
   const out = []
   for (const st of stores.value) {
     const storeRows = list.filter((i) => i.store === st)
@@ -307,7 +302,6 @@ const groupedActiveSections = computed(() => {
         out.push({
           key: `sc:${st}:${cat}`,
           title: `${st} — ${cat}`,
-          subtitle: null,
           rows: [...catRows].sort((a, b) => a.name.localeCompare(b.name)),
         })
       }
@@ -334,7 +328,6 @@ onMounted(() => {
 
 <template>
   <main style="max-width: 1040px; margin: 0 auto; padding: 16px">
-    <!-- Top Header & Meal Plan Importer Toggle -->
     <div class="card" style="margin-bottom: 14px">
       <div
         style="
@@ -368,7 +361,6 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- Collapsible Meal Plan Importer -->
       <div
         v-if="showImporter"
         style="
@@ -472,7 +464,6 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- Quick-Add Bar for Unrelated / Household Items -->
       <form
         style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center"
         @submit.prevent="handleAddItem"
@@ -515,7 +506,6 @@ onMounted(() => {
       </form>
     </div>
 
-    <!-- Store Filter Tabs & Group-By Selector -->
     <div
       class="card"
       style="
@@ -558,7 +548,6 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Active Shopping List Groups -->
     <div v-if="loading" class="card" style="text-align: center; color: var(--muted); padding: 24px">
       Loading shopping list...
     </div>
@@ -677,7 +666,6 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- Checked Off Strikethrough Section -->
       <div v-if="checkedItems.length" class="card" style="margin-top: 14px; background: #f8fafc">
         <div
           style="

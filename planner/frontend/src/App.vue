@@ -670,6 +670,13 @@ onMounted(async () => {
         >
           {{ appMode === 'shopping' ? '📅 Back to Planner' : `🛒 Shopping List${shoppingRemainingCount ? ' (' + shoppingRemainingCount + ')' : ''}` }}
         </button>
+        <button
+          type="button"
+          :class="{ primary: appMode === 'shopping' }"
+          @click="appMode = appMode === 'shopping' ? 'planner' : 'shopping'"
+        >
+          {{ appMode === 'shopping' ? '📅 Back to Planner' : `🛒 Shopping List${shoppingRemainingCount ? ' (' + shoppingRemainingCount + ')' : ''}` }}
+        </button>
         <a :href="mealiePublicUrl" target="_blank" rel="noopener">
           <button type="button">Open Mealie</button>
         </a>
@@ -701,6 +708,13 @@ onMounted(async () => {
       @navigate="navigateCalendar"
       @select-date="selectedDate = $event"
       @save-review="handleSaveReview"
+    />
+
+    <ShoppingListView
+      v-else-if="appMode === 'shopping'"
+      :api-fetch="apiFetch"
+      :notify="notify"
+      @updated-count="shoppingRemainingCount = $event"
     />
 
     <ShoppingListView
