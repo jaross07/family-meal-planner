@@ -1,14 +1,14 @@
 """add shopping list and item preferences tables
 
 Revision ID: 0009_shopping_list
-Revises: 0008_day_notes
+Revises: 0009_recipe_categories
 Create Date: 2026-11-22
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = "0009_shopping_list"
-down_revision = '0008_day_notes'
+down_revision = "0009_recipe_categories"
 branch_labels = None
 depends_on = None
 
