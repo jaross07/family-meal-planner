@@ -318,6 +318,27 @@ class MealieClient:
         return None
 
 
+    async def fetch_recipe_details(self, slug_or_id: str) -> dict | None:
+        """Fetch full recipe payload (including parsed recipeIngredient list) from Mealie."""
+        if not slug_or_id:
+            return None
+        async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
+            try:
+                resp = await client.get(
+                    f"/api/recipes/{slug_or_id}",
+                    headers=self._headers(),
+                )
+            except httpx.RequestError as exc:
+                raise MealieUnavailableError("Unable to fetch recipe details from Mealie") from exc
+
+            if resp.status_code == 404:
+                return None
+            if resp.status_code >= 500:
+                raise MealieUnavailableError(f"Mealie recipe error: {resp.status_code}")
+            resp.raise_for_status()
+            return resp.json()
+
+
 mealie_client = MealieClient()
 
 

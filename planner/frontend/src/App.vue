@@ -8,6 +8,7 @@ import DayPanel from './components/DayPanel.vue'
 import HenleyReviewView from './components/HenleyReviewView.vue'
 import IngestModal from './components/IngestModal.vue'
 import RulesModal from './components/RulesModal.vue'
+import ShoppingListView from './components/ShoppingListView.vue'
 import WeekPlanModal from './components/WeekPlanModal.vue'
 
 const authenticated = ref(false)
@@ -60,6 +61,7 @@ const myRatings = reactive({})
 const myNotes = reactive({})
 const familyNotes = ref({})
 const appMode = ref('planner')
+const shoppingRemainingCount = ref(0)
 const henleyMealFilter = ref('all')
 const loadingRecs = ref(false)
 const planningRecipeId = ref(null)
@@ -146,6 +148,15 @@ async function loadVisibleRangeData() {
   familyEvents.value = holData.family_events || []
   for (const c of ctxList) {
     contexts[`${c.date}:${c.meal_type}`] = c
+  }
+}
+
+async function loadShoppingCount() {
+  try {
+    const res = await apiFetch('/api/shopping')
+    shoppingRemainingCount.value = (res.items || []).filter((i) => !i.checked).length
+  } catch {
+    // Non-fatal on initial load
   }
 }
 
@@ -652,6 +663,13 @@ onMounted(async () => {
         >
           {{ darkMode ? '☀️ Light' : '🌙 Dark' }}
         </button>
+        <button
+          type="button"
+          :class="{ primary: appMode === 'shopping' }"
+          @click="appMode = appMode === 'shopping' ? 'planner' : 'shopping'"
+        >
+          {{ appMode === 'shopping' ? '📅 Back to Planner' : `🛒 Shopping List${shoppingRemainingCount ? ' (' + shoppingRemainingCount + ')' : ''}` }}
+        </button>
         <a :href="mealiePublicUrl" target="_blank" rel="noopener">
           <button type="button">Open Mealie</button>
         </a>
@@ -683,6 +701,13 @@ onMounted(async () => {
       @navigate="navigateCalendar"
       @select-date="selectedDate = $event"
       @save-review="handleSaveReview"
+    />
+
+    <ShoppingListView
+      v-else-if="appMode === 'shopping'"
+      :api-fetch="apiFetch"
+      :notify="notify"
+      @updated-count="shoppingRemainingCount = $event"
     />
 
     <main v-else class="workspace">

@@ -6,7 +6,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
-    Integer,
+    Float, Integer,
     JSON,
     String,
     UniqueConstraint,
@@ -182,4 +182,36 @@ class DayNote(Base):
     note: Mapped[str] = mapped_column(Text, default="", nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class ItemPreference(Base):
+    __tablename__ = "item_preferences"
+
+    normalized_name: Mapped[str] = mapped_column(String(255), primary_key=True)
+    default_store: Mapped[str] = mapped_column(String(64), default="WinCo", nullable=False)
+    default_category: Mapped[str] = mapped_column(String(64), default="Pantry", nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class ShoppingListItem(Base):
+    __tablename__ = "shopping_list_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    quantity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    category: Mapped[str] = mapped_column(String(64), default="Pantry", nullable=False)
+    store: Mapped[str] = mapped_column(String(64), default="WinCo", nullable=False)
+    checked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    source_recipes: Mapped[list] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"), default=list, nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
