@@ -69,6 +69,7 @@ const syncing = ref(false)
 const showRulesModal = ref(false)
 const showIngestModal = ref(false)
 const showWeekModal = ref(false)
+const showHeaderMenu = ref(false)
 const dayModalDate = ref(null)
 
 const mealiePublicUrl = ref('https://meals.nobleshrew.com')
@@ -616,7 +617,7 @@ onMounted(async () => {
     </form>
   </div>
 
-  <div v-else>
+  <div v-else @click="showHeaderMenu = false">
     <div v-if="mealieUnavailable" class="banner-warn">
       Mealie is currently unreachable. Showing cached recipes; adding meals to Mealie is temporarily disabled.
     </div>
@@ -638,55 +639,99 @@ onMounted(async () => {
           <button
             type="button"
             style="border: none; border-radius: 0; padding: 5px 10px; font-size: 0.82rem"
-            :style="appMode === 'planner' ? { background: '#2563eb', color: '#fff', fontWeight: '600' } : { background: '#fff' }"
+            :style="appMode === 'planner' ? { background: '#2563eb', color: '#fff', fontWeight: '600' } : { background: 'transparent' }"
             @click="appMode = 'planner'"
           >
             Planner
           </button>
           <button
             type="button"
-            style="border: none; border-radius: 0; padding: 5px 10px; font-size: 0.82rem"
-            :style="appMode === 'ratings' ? { background: '#eab308', color: '#1e293b', fontWeight: '700' } : { background: '#fff' }"
-            @click="appMode = 'ratings'"
+            style="border: none; border-left: 1px solid var(--border); border-radius: 0; padding: 5px 10px; font-size: 0.82rem"
+            :style="appMode === 'henley' ? { background: '#2563eb', color: '#fff', fontWeight: '600' } : { background: 'transparent' }"
+            @click="appMode = 'henley'"
           >
             ⭐ Ratings
+          </button>
+          <button
+            type="button"
+            style="border: none; border-left: 1px solid var(--border); border-radius: 0; padding: 5px 10px; font-size: 0.82rem"
+            :style="appMode === 'shopping' ? { background: '#2563eb', color: '#fff', fontWeight: '600' } : { background: 'transparent' }"
+            @click="appMode = 'shopping'"
+          >
+            🛒 Shopping List{{ shoppingRemainingCount ? ` (${shoppingRemainingCount})` : '' }}
           </button>
         </div>
       </div>
 
       <div class="nav-actions">
-        <button
-          type="button"
-          :title="darkMode ? 'Switch to light mode' : 'Switch to dark mode'"
-          class="theme-toggle-btn"
-          @click="toggleDarkMode"
-        >
+        <button type="button" @click="toggleDarkMode">
           {{ darkMode ? '☀️ Light' : '🌙 Dark' }}
-        </button>
-        <button
-          type="button"
-          :class="{ primary: appMode === 'shopping' }"
-          @click="appMode = appMode === 'shopping' ? 'planner' : 'shopping'"
-        >
-          {{ appMode === 'shopping' ? '📅 Back to Planner' : `🛒 Shopping List${shoppingRemainingCount ? ' (' + shoppingRemainingCount + ')' : ''}` }}
-        </button>
-        <button
-          type="button"
-          :class="{ primary: appMode === 'shopping' }"
-          @click="appMode = appMode === 'shopping' ? 'planner' : 'shopping'"
-        >
-          {{ appMode === 'shopping' ? '📅 Back to Planner' : `🛒 Shopping List${shoppingRemainingCount ? ' (' + shoppingRemainingCount + ')' : ''}` }}
         </button>
         <a :href="mealiePublicUrl" target="_blank" rel="noopener">
           <button type="button">Open Mealie</button>
         </a>
-        <button :disabled="syncing" @click="handleSyncNow">
-          {{ syncing ? 'Syncing...' : 'Sync Recipes' }}
-        </button>
-        <button @click="showIngestModal = true">✨ AI Import</button>
-        <button class="primary" @click="showWeekModal = true">Plan Week</button>
-        <button @click="showRulesModal = true">Configure</button>
-        <button @click="handleLogout">Sign Out</button>
+        <button type="button" class="primary" @click="showWeekModal = true">Plan Week</button>
+
+        <div style="position: relative; display: inline-block">
+          <button
+            type="button"
+            aria-haspopup="true"
+            :aria-expanded="showHeaderMenu"
+            @click.stop="showHeaderMenu = !showHeaderMenu"
+          >
+            ☰ Menu ▾
+          </button>
+          <div
+            v-if="showHeaderMenu"
+            style="
+              position: absolute;
+              right: 0;
+              top: calc(100% + 6px);
+              min-width: 185px;
+              background: var(--card, #fff);
+              border: 1px solid var(--border);
+              border-radius: 10px;
+              box-shadow: 0 10px 25px rgba(15, 23, 42, 0.16);
+              padding: 6px;
+              display: flex;
+              flex-direction: column;
+              gap: 4px;
+              z-index: 60;
+            "
+            @click.stop
+          >
+            <button
+              type="button"
+              :disabled="syncing"
+              style="text-align: left; width: 100%; border: none; background: transparent"
+              @click="showHeaderMenu = false; handleSyncNow()"
+            >
+              🔄 {{ syncing ? 'Syncing...' : 'Sync Recipes' }}
+            </button>
+            <button
+              type="button"
+              style="text-align: left; width: 100%; border: none; background: transparent"
+              @click="showHeaderMenu = false; showIngestModal = true"
+            >
+              ✨ AI Import
+            </button>
+            <button
+              type="button"
+              style="text-align: left; width: 100%; border: none; background: transparent"
+              @click="showHeaderMenu = false; showRulesModal = true"
+            >
+              ⚙️ Configure
+            </button>
+            <hr style="border: none; border-top: 1px solid var(--border); margin: 2px 0" />
+            <button
+              type="button"
+              style="text-align: left; width: 100%; border: none; background: transparent; color: var(--danger, #dc2626)"
+              @click="showHeaderMenu = false; handleLogout()"
+            >
+              🚪 Sign Out
+            </button>
+          </div>
+        </div>
       </div>
     </header>
 
