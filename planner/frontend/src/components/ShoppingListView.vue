@@ -22,7 +22,8 @@ const categories = ref([
 const items = ref([])
 const loading = ref(false)
 const activeStoreFilter = ref('ALL')
-const groupMode = ref('category')
+const activeCategoryFilter = ref('ALL')
+const groupMode = ref('category') // 'category' | 'store_category' | 'store'
 const showChecked = ref(true)
 
 const newItem = reactive({
@@ -75,6 +76,14 @@ function emitUncheckedCount() {
   const remaining = items.value.filter((i) => !i.checked).length
   emit('updated-count', remaining)
 }
+
+watch(groupMode, (mode) => {
+  if (mode === 'store') {
+    activeStoreFilter.value = 'ALL'
+  } else {
+    activeCategoryFilter.value = 'ALL'
+  }
+})
 
 watch(
   () => newItem.name,
@@ -142,6 +151,30 @@ async function toggleChecked(item) {
   }
 }
 
+async function checkAllInSection(section) {
+  const targets = section.rows.filter((i) => !i.checked)
+  if (!targets.length) return
+  for (const item of targets) {
+    item.checked = true
+  }
+  emitUncheckedCount()
+  try {
+    await Promise.all(
+      targets.map(async (item) => {
+        const updated = await props.apiFetch(`/api/shopping/items/${item.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ checked: true }),
+        })
+        Object.assign(item, updated)
+      })
+    )
+    props.notify(`Checked off ${targets.length} item(s) in ${section.title}`)
+  } catch (err) {
+    await loadShoppingList()
+    props.notify(err.message || 'Could not check off all items')
+  }
+}
+
 async function updateItemField(item, field, value) {
   const prev = item[field]
   item[field] = value
@@ -165,13 +198,24 @@ async function deleteItem(item) {
 
 async function clearCheckedItems() {
   const storeParam =
-    activeStoreFilter.value !== 'ALL'
+    groupMode.value !== 'store' && activeStoreFilter.value !== 'ALL'
       ? `?store=${encodeURIComponent(activeStoreFilter.value)}`
       : ''
+  if (groupMode.value === 'store' && activeCategoryFilter.value !== 'ALL') {
+    const toDelete = checkedItems.value
+    items.value = items.value.filter((i) => !(i.checked && i.category === activeCategoryFilter.value))
+    await Promise.all(
+      toDelete.map((i) => props.apiFetch(`/api/shopping/items/${i.id}`, { method: 'DELETE' }))
+    )
+    props.notify('Cleared checked items')
+    return
+  }
   await props.apiFetch(`/api/shopping/checked${storeParam}`, { method: 'DELETE' })
   items.value = items.value.filter((i) => {
     if (!i.checked) return true
-    if (activeStoreFilter.value !== 'ALL' && i.store !== activeStoreFilter.value) return true
+    if (groupMode.value !== 'store' && activeStoreFilter.value !== 'ALL' && i.store !== activeStoreFilter.value) {
+      return true
+    }
     return false
   })
   props.notify('Cleared checked items')
@@ -237,13 +281,28 @@ const uncheckedCountByStore = computed(() => {
   return counts
 })
 
-const storeFilteredItems = computed(() => {
+const uncheckedCountByCategory = computed(() => {
+  const counts = { ALL: 0 }
+  for (const c of categories.value) counts[c] = 0
+  for (const item of items.value) {
+    if (item.checked) continue
+    counts.ALL += 1
+    counts[item.category] = (counts[item.category] || 0) + 1
+  }
+  return counts
+})
+
+const filteredItems = computed(() => {
+  if (groupMode.value === 'store') {
+    if (activeCategoryFilter.value === 'ALL') return items.value
+    return items.value.filter((i) => i.category === activeCategoryFilter.value)
+  }
   if (activeStoreFilter.value === 'ALL') return items.value
   return items.value.filter((i) => i.store === activeStoreFilter.value)
 })
 
-const activeItems = computed(() => storeFilteredItems.value.filter((i) => !i.checked))
-const checkedItems = computed(() => storeFilteredItems.value.filter((i) => i.checked))
+const activeItems = computed(() => filteredItems.value.filter((i) => !i.checked))
+const checkedItems = computed(() => filteredItems.value.filter((i) => i.checked))
 
 function sortByCategoryOrder(list) {
   const order = new Map(categories.value.map((c, idx) => [c, idx]))
@@ -506,6 +565,7 @@ onMounted(() => {
       </form>
     </div>
 
+    <!-- Filter Pills (Categories when grouped by Store; Stores otherwise) & Group-By Selector -->
     <div
       class="card"
       style="
@@ -517,7 +577,28 @@ onMounted(() => {
         gap: 10px;
       "
     >
-      <div style="display: flex; flex-wrap: wrap; gap: 6px">
+      <div v-if="groupMode === 'store'" style="display: flex; flex-wrap: wrap; gap: 6px">
+        <button
+          type="button"
+          class="toggle-chip"
+          :class="{ active: activeCategoryFilter === 'ALL' }"
+          @click="activeCategoryFilter = 'ALL'"
+        >
+          All Categories ({{ uncheckedCountByCategory.ALL || 0 }})
+        </button>
+        <button
+          v-for="cat in categories"
+          :key="cat"
+          type="button"
+          class="toggle-chip"
+          :class="{ active: activeCategoryFilter === cat }"
+          @click="activeCategoryFilter = cat"
+        >
+          {{ cat }} ({{ uncheckedCountByCategory[cat] || 0 }})
+        </button>
+      </div>
+
+      <div v-else style="display: flex; flex-wrap: wrap; gap: 6px">
         <button
           type="button"
           class="toggle-chip"
@@ -579,7 +660,18 @@ onMounted(() => {
             align-items: center;
           "
         >
-          <span>{{ section.title }}</span>
+          <label
+            style="display: flex; align-items: center; gap: 8px; cursor: pointer"
+            :title="`Check off all items in ${section.title}`"
+          >
+            <input
+              type="checkbox"
+              :checked="false"
+              style="width: 17px; height: 17px; cursor: pointer"
+              @change="checkAllInSection(section)"
+            />
+            <span>{{ section.title }}</span>
+          </label>
           <span style="font-size: 0.78rem; color: var(--muted)">{{ section.rows.length }}</span>
         </div>
 
