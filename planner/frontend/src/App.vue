@@ -647,8 +647,8 @@ onMounted(async () => {
           <button
             type="button"
             style="border: none; border-left: 1px solid var(--border); border-radius: 0; padding: 5px 10px; font-size: 0.82rem"
-            :style="appMode === 'henley' ? { background: '#2563eb', color: '#fff', fontWeight: '600' } : { background: 'transparent' }"
-            @click="appMode = 'henley'"
+            :style="appMode === 'ratings' ? { background: '#2563eb', color: '#fff', fontWeight: '600' } : { background: 'transparent' }"
+            @click="appMode = 'ratings'"
           >
             ⭐ Ratings
           </button>
@@ -753,13 +753,6 @@ onMounted(async () => {
       @navigate="navigateCalendar"
       @select-date="selectedDate = $event"
       @save-review="handleSaveReview"
-    />
-
-    <ShoppingListView
-      v-else-if="appMode === 'shopping'"
-      :api-fetch="apiFetch"
-      :notify="notify"
-      @updated-count="shoppingRemainingCount = $event"
     />
 
     <ShoppingListView
